@@ -6,9 +6,9 @@ import json
 class Settings:
     # Paths
     BASE_DIR: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    DATA_DIR: str = os.path.join(os.path.dirname(BASE_DIR), "EDA-Phase-1")
+    DATA_DIR: str = os.path.join(os.path.dirname(BASE_DIR), "Datasets") if os.path.exists(os.path.join(os.path.dirname(BASE_DIR), "Datasets")) else os.path.join(os.path.dirname(BASE_DIR), "EDA-Phase-1")
     DATA_STORAGE_DIR: str = os.path.join(BASE_DIR, "data")
-    DB_PATH: str = os.path. join(DATA_STORAGE_DIR, "muletrace.db")
+    DB_PATH: str = os.path.join(DATA_STORAGE_DIR, "muletrace.db")
 
     STAGING_DIR: str = os.path.join(DATA_STORAGE_DIR, "staging")
 

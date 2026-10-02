@@ -6,7 +6,7 @@ import polars as pl
 
 def main():
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    DATA_DIR = os.path.join(os.path.dirname(BASE_DIR), "EDA-Phase-1")
+    DATA_DIR = os.path.join(os.path.dirname(BASE_DIR), "Datasets") if os.path.exists(os.path.join(os.path.dirname(BASE_DIR), "Datasets")) else os.path.join(os.path.dirname(BASE_DIR), "EDA-Phase-1")
     OLD_DB_PATH = os.path.join(BASE_DIR, "muletrace.db")
     NEW_DB_DIR = os.path.join(BASE_DIR, "data")
     NEW_DB_PATH = os.path.join(NEW_DB_DIR, "muletrace.db")
