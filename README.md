@@ -1,4 +1,4 @@
-# MuleTrace — Enterprise AML & Mule Account Forensic Intelligence Platform
+# MuleTrace - Enterprise AML & Mule Account Forensic Intelligence Platform
 
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![React 18](https://img.shields.io/badge/Frontend-React_18_%2B_TypeScript-61DAFB.svg?logo=react&logoColor=black)](https://react.dev)
