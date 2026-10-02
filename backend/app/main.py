@@ -15,7 +15,10 @@ from app.routes.ingestion import router as ingestion_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Ensure SQLite database is present and initialized on startup
-    ensure_database_initialized()
+    try:
+        ensure_database_initialized()
+    except Exception as e:
+        print(f"[Warning] Database auto-initialization deferred: {e}")
     yield
 
 app = FastAPI(

@@ -20,14 +20,14 @@ frontend/.vite/
 
 # Backend Generated Caches & DBs
 backend/cache/
-backend/data/staging/
-backend/data/ *. db
-backend/data/ *. sqlite
+backend/data/staging/*
 *.parquet
-*.db
 *.sqlite
 *.sqlite3
 backend/muletrace.db
+
+# Allow persistent database for cloud deployment
+!backend/data/muletrace.db
 
 # Environment & OS files
 .env

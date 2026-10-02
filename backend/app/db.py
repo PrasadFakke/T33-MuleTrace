@@ -40,8 +40,11 @@ def ensure_database_initialized():
 
     # Otherwise initialize from scratch
     if not os.path.exists(settings.DB_PATH):
-        from app.ingestion.build_db import build_database
-        build_database()
+        try:
+            from app.ingestion.build_db import build_database
+            build_database()
+        except Exception as e:
+            print(f"[Warning] Full dataset build skipped ({e}), initializing empty schema.")
         from app.ingestion.init_dynamic_db import main as upgrade_schema
         upgrade_schema()
 
