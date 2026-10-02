@@ -9,10 +9,14 @@ import pandas as pd
 
 sys.stdout.reconfigure(encoding='utf-8')
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DATA_DIR = os.path.join(os.path.dirname(BASE_DIR), "EDA-Phase-1")
-DB_PATH = os.path.join(BASE_DIR, "muletrace.db")
-CACHE_DIR = os.path.join(BASE_DIR, "cache")
+BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
+BASE_DIR = BACKEND_DIR
+DATA_DIR = os.path.join(PROJECT_ROOT, "EDA-Phase-1")
+DATA_STORAGE_DIR = os.path.join(BACKEND_DIR, "data")
+DB_PATH = os.path.join(DATA_STORAGE_DIR, "muletrace.db")
+CACHE_DIR = os.path.join(BACKEND_DIR, "cache")
+os.makedirs(DATA_STORAGE_DIR, exist_ok=True)
 os.makedirs(CACHE_DIR, exist_ok=True)
 PARQUET_TXN_PATH = os.path.join(CACHE_DIR, "transactions.parquet")
 

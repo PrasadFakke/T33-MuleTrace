@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+from app.db import ensure_database_initialized
 from app.routes.dashboard import router as dashboard_router
 from app.routes.alerts import router as alerts_router
 from app.routes.accounts import router as accounts_router
@@ -8,10 +10,19 @@ from app.routes.analytics import router as analytics_router
 from app.routes.settings_routes import router as settings_router
 from app.routes.chat_routes import router as chat_router
 
+from app.routes.ingestion import router as ingestion_router
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Ensure SQLite database is present and initialized on startup
+    ensure_database_initialized()
+    yield
+
 app = FastAPI(
     title="MuleTrace AML & Fraud Investigation Platform API",
     description="High-performance fintech backend for mule account detection and bipartite network analysis",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Enable CORS for local React/Vite frontend
@@ -31,6 +42,7 @@ app.include_router(investigations_router)
 app.include_router(analytics_router)
 app.include_router(settings_router)
 app.include_router(chat_router)
+app.include_router(ingestion_router)
 
 @app.get("/")
 def root():

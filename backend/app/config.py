@@ -7,7 +7,16 @@ class Settings:
     # Paths
     BASE_DIR: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     DATA_DIR: str = os.path.join(os.path.dirname(BASE_DIR), "EDA-Phase-1")
-    DB_PATH: str = os.path.join(BASE_DIR, "muletrace.db")
+    DATA_STORAGE_DIR: str = os.path.join(BASE_DIR, "data")
+    DB_PATH: str = os.path. join(DATA_STORAGE_DIR, "muletrace.db")
+
+    STAGING_DIR: str = os.path.join(DATA_STORAGE_DIR, "staging")
+
+    # Upload limits
+
+    MAX_UPLOAD_SIZE_MB: int = 50
+
+    ALLOWED_EXTENSIONS: tuple = (".csv", ".xlsx", ".xls")
     CONFIG_PATH: str = os.path.join(BASE_DIR, "settings.json")
     
     # Detection Thresholds (Defaults requested by user)

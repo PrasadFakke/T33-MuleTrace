@@ -293,6 +293,128 @@ export async function resetSettings() {
   return res.json();
 }
 
+
+// ==========================================
+// DYNAMIC INGESTION & FRAUD RE-ANALYSIS API
+// ==========================================
+
+export interface IngestionPreviewRow {
+  row_num: number;
+  account_id: string;
+  customer_id: string;
+  transaction_id: string;
+  timestamp: string;
+  amount: number;
+  txn_type: string;
+  counterparty: string;
+  account_status: 'NEW' | 'EXISTING';
+  customer_status: 'NEW' | 'EXISTING';
+  resolution: string;
+}
+
+export interface IngestionBatchPreview {
+  success: boolean;
+  batch_id: string;
+  filename: string;
+  file_size_formatted: string;
+  total_rows: number;
+  valid_rows: number;
+  invalid_rows: number;
+  duplicate_rows: number;
+  conflict_rows: number;
+  new_customers_count: number;
+  existing_customers_count: number;
+  new_accounts_count: number;
+  existing_accounts_count: number;
+  schema_mapping: Record<string, string>;
+  unmapped_columns: string[];
+  preview_samples: IngestionPreviewRow[];
+}
+
+export interface IngestionCommitResponse {
+  success: boolean;
+  batch_id: string;
+  message: string;
+  records_imported: number;
+  new_customers_created: number;
+  new_accounts_created: number;
+  affected_accounts_count: number;
+  fraud_reanalysis: {
+    accounts_reanalyzed: number;
+    new_alerts_generated: number;
+    high_risk_accounts: number;
+    scores: Array<{
+      account_id: string;
+      risk_score: number;
+      severity: string;
+      primary_pattern: string;
+      reasons: string[];
+    }>;
+  };
+}
+
+export interface IngestionBatchHistoryItem {
+  batch_id: string;
+  filename: string;
+  upload_time: string;
+  row_count: number;
+  valid_count: number;
+  invalid_count: number;
+  duplicate_count: number;
+  conflict_count: number;
+  new_customers_count: number;
+  existing_customers_count: number;
+  new_accounts_count: number;
+  existing_accounts_count: number;
+  new_transactions_count: number;
+  status: string;
+}
+
+export async function uploadAndPreviewFile(file: File): Promise<IngestionBatchPreview> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${API_BASE}/ingestion/upload`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Upload and validation failed' }));
+    throw new Error(err.detail || 'Upload and validation failed');
+  }
+  return res.json();
+}
+
+export async function commitIngestionBatch(batchId: string): Promise<IngestionCommitResponse> {
+  const res = await fetch(`${API_BASE}/ingestion/commit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ batch_id: batchId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Batch commit failed' }));
+    throw new Error(err.detail || 'Batch commit failed');
+  }
+  return res.json();
+}
+
+export async function rollbackIngestionBatch(batchId: string): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${API_BASE}/ingestion/${batchId}/rollback`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Batch rollback failed' }));
+    throw new Error(err.detail || 'Batch rollback failed');
+  }
+  return res.json();
+}
+
+export async function fetchIngestionHistory(): Promise<{ batches: IngestionBatchHistoryItem[] }> {
+  const res = await fetch(`${API_BASE}/ingestion/history`);
+  if (!res.ok) throw new Error('Failed to fetch ingestion history');
+  const data = await res.json();
+  return { batches: Array.isArray(data) ? data : (data.batches || []) };
+}
+
 export interface ChatResponse {
   reply: string;
   account_id?: string | null;

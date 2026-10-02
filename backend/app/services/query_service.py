@@ -33,6 +33,11 @@ def get_dashboard_summary():
         cursor.execute("SELECT COUNT(*) FROM accounts WHERE investigation_status = 'CONFIRMED'")
         confirmed_investigations = cursor.fetchone()[0]
 
+        # Dynamic transactions count from SQLite
+        cursor.execute("SELECT COUNT(*) FROM transactions")
+        dynamic_txns_count = cursor.fetchone()[0]
+        total_transactions_analyzed = 7424845 + dynamic_txns_count
+
         # Risk distribution
         cursor.execute("SELECT risk_level, COUNT(*) FROM accounts GROUP BY risk_level")
         risk_dist = {row[0]: row[1] for row in cursor.fetchall()}
@@ -76,7 +81,7 @@ def get_dashboard_summary():
         return {
             "kpis": {
                 "total_accounts": total_accounts,
-                "transactions_analyzed": 7424845,
+                "transactions_analyzed": total_transactions_analyzed,
                 "suspicious_accounts": suspicious_accounts,
                 "open_alerts": open_alerts,
                 "critical_risk_accounts": critical_risk,
@@ -248,24 +253,53 @@ def get_account_profile(account_id: str):
         }
 
 def get_account_transactions(account_id: str, page=1, page_size=50, txn_type=None, sort_order="desc"):
-    """Query transactions from Parquet cache using Polars"""
-    if not os.path.exists(PARQUET_PATH):
-        return {"items": [], "total": 0, "page": page, "page_size": page_size, "total_pages": 0}
+    """
+    Unified Transaction Query:
+    Checks newly ingested transactions in SQLite first, and combines with baseline Parquet records.
+    """
+    items = []
+
+    # 1. Query dynamic transactions from SQLite
+    with get_db() as conn:
+        cursor = conn.cursor()
+        conds = ["account_id = ?"]
+        params = [account_id]
+        if txn_type and txn_type.upper() in ["C", "D"]:
+            conds.append("txn_type = ?")
+            params.append(txn_type.upper())
+            
+        cursor.execute(f"""
+            SELECT transaction_id, account_id, transaction_timestamp, mcc_code,
+                   channel, amount, txn_type, counterparty_id
+            FROM transactions
+            WHERE {" AND ".join(conds)}
+            ORDER BY transaction_timestamp {"DESC" if sort_order.lower() == "desc" else "ASC"}
+        """, params)
+        sqlite_txns = [dict(r) for r in cursor.fetchall()]
+        items.extend(sqlite_txns)
         
-    lf = pl.scan_parquet(PARQUET_PATH).filter(pl.col("account_id") == account_id)
-    if txn_type and txn_type.upper() in ["C", "D"]:
-        lf = lf.filter(pl.col("txn_type") == txn_type.upper())
-        
-    df = lf.sort("transaction_timestamp", descending=(sort_order.lower() == "desc")).collect()
-    total = len(df)
+    # 2. Query historical baseline transactions from Parquet cache if available
+    if os.path.exists(PARQUET_PATH):
+        try:
+            lf = pl.scan_parquet(PARQUET_PATH).filter(pl.col("account_id") == account_id)
+            if txn_type and txn_type.upper() in ["C", "D"]:
+                lf = lf.filter(pl.col("txn_type") == txn_type.upper())
+            df = lf.sort("transaction_timestamp", descending=(sort_order.lower() == "desc")).collect()
+            items.extend(df.to_dicts())
+        except:
+            pass
+
+    # Sort combined
+    reverse = (sort_order.lower() == "desc")
+    items.sort(key=lambda x: str(x.get("transaction_timestamp", "")), reverse=reverse)
+    total = len(items)
     
     start_idx = (page - 1) * page_size
     end_idx = start_idx + page_size
-    sliced = df.slice(start_idx, page_size)
+    paginated_items = items[start_idx:end_idx]
     
-    items = sliced.to_dicts()
     return {
-        "items": items,
+        "items": paginated_items,
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -284,11 +318,26 @@ def get_account_network_graph(account_id: str, max_cps=25):
         if not focal_acct:
             return {"nodes": [], "edges": []}
             
-    focal_info = dict(focal_acct)
-    
-    # Get all transactions for focal account
-    txns = pl.scan_parquet(PARQUET_PATH).filter(pl.col("account_id") == account_id).collect()
-    if len(txns) == 0:
+        focal_info = dict(focal_acct)
+
+        # 1. Fetch dynamic transactions for this account from SQLite
+        cursor.execute("""
+            SELECT transaction_id, account_id, transaction_timestamp, mcc_code,
+                   channel, amount, txn_type, counterparty_id
+            FROM transactions
+            WHERE account_id = ?
+        """, (account_id,))
+        all_txns_list = [dict(r) for r in cursor.fetchall()]
+
+    # 2. Fetch baseline transactions from Parquet
+    if os.path.exists(PARQUET_PATH):
+        try:
+            baseline_txns = pl.scan_parquet(PARQUET_PATH).filter(pl.col("account_id") == account_id).collect()
+            all_txns_list.extend(baseline_txns.to_dicts())
+        except:
+            pass
+
+    if len(all_txns_list) == 0:
         return {
             "nodes": [{
                 "id": account_id,
@@ -301,15 +350,28 @@ def get_account_network_graph(account_id: str, max_cps=25):
             "edges": []
         }
         
-    # Aggregate flows by counterparty
-    cp_aggs = txns.group_by("counterparty_id").agg([
-        pl.len().alias("tx_count"),
-        pl.col("amount").sum().alias("total_amount"),
-        (pl.col("txn_type") == "C").sum().alias("credit_count"),
-        (pl.col("txn_type") == "D").sum().alias("debit_count"),
-        pl.col("amount").filter(pl.col("txn_type") == "C").sum().alias("credit_amount"),
-        pl.col("amount").filter(pl.col("txn_type") == "D").sum().alias("debit_amount")
-    ]).sort("total_amount", descending=True).head(max_cps)
+
+    # Aggregate flows by counterparty using Python dict
+    cp_aggs_dict = {}
+    for t in all_txns_list:
+        cp = t.get("counterparty_id")
+        if not cp: continue
+        if cp not in cp_aggs_dict:
+            cp_aggs_dict[cp] = {"tx_count": 0, "total_amount": 0.0, "credit_count": 0, "debit_count": 0, "credit_amount": 0.0, "debit_amount": 0.0}
+        
+        amt = abs(t.get("amount") or 0.0)
+        is_cred = (t.get("txn_type") == "C")
+        cp_aggs_dict[cp]["tx_count"] += 1
+        cp_aggs_dict[cp]["total_amount"] += amt
+        if is_cred:
+            cp_aggs_dict[cp]["credit_count"] += 1
+            cp_aggs_dict[cp]["credit_amount"] += amt
+        else:
+            cp_aggs_dict[cp]["debit_count"] += 1
+            cp_aggs_dict[cp]["debit_amount"] += amt
+
+    # Sort counterparties by volume and limit to max_cps
+    sorted_cps = sorted(cp_aggs_dict.items(), key=lambda x: x[1]["total_amount"], reverse=True)[:max_cps]
     
     nodes = []
     edges = []
@@ -328,12 +390,11 @@ def get_account_network_graph(account_id: str, max_cps=25):
     top_cps = set()
     
     # 2. Counterparty nodes & edges to focal
-    for r in cp_aggs.iter_rows(named=True):
-        cp_id = r["counterparty_id"]
+    for cp_id, stat in sorted_cps:
         top_cps.add(cp_id)
         
         # Categorize CP
-        cp_type = "COUNTERPARTY"
+        sub_cat = "STANDARD"
         if "FOREIGN" in cp_id: sub_cat = "FOREIGN"
         elif "EMPL" in cp_id: sub_cat = "EMPLOYER"
         elif "BR" in cp_id: sub_cat = "BRANCH"
@@ -345,62 +406,76 @@ def get_account_network_graph(account_id: str, max_cps=25):
             "type": "COUNTERPARTY",
             "category": sub_cat,
             "is_focal": False,
-            "tx_count": r["tx_count"],
-            "total_amount": round(r["total_amount"] or 0.0, 2),
-            "is_reciprocal": (r["credit_count"] > 0 and r["debit_count"] > 0)
+            "tx_count": stat["tx_count"],
+            "total_amount": round(stat["total_amount"], 2),
+            "is_reciprocal": (stat["credit_count"] > 0 and stat["debit_count"] > 0)
         })
         
-        # Add directional edges
-        # If Credit (money from CP to Account): CP -> Account
-        if (r["credit_count"] or 0) > 0:
+        if stat["credit_count"] > 0:
             edges.append({
                 "id": f"e_{cp_id}_{account_id}_C",
                 "source": cp_id,
                 "target": account_id,
                 "type": "CREDIT",
-                "amount": round(r["credit_amount"] or 0.0, 2),
-                "count": r["credit_count"],
-                "label": f"₹{r['credit_amount']:,.0f} ({r['credit_count']}x)"
+
+                "amount": round(stat["credit_amount"], 2),
+                "count": stat["credit_count"],
+                "label": f"₹{stat['credit_amount']:,.0f} ({stat['credit_count']}x)"
             })
         # If Debit (money from Account to CP): Account -> CP
-        if (r["debit_count"] or 0) > 0:
+        if stat["debit_count"] > 0:
             edges.append({
                 "id": f"e_{account_id}_{cp_id}_D",
                 "source": account_id,
                 "target": cp_id,
                 "type": "DEBIT",
-                "amount": round(r["debit_amount"] or 0.0, 2),
-                "count": r["debit_count"],
-                "label": f"₹{r['debit_amount']:,.0f} ({r['debit_count']}x)"
+                "amount": round(stat["debit_amount"], 2),
+                "count": stat["debit_count"],
+                "label": f"₹{stat['debit_amount']:,.0f} ({stat['debit_count']}x)"
             })
             
     # 3. 2-Hop Bridging: Discover other accounts connected through these counterparties (limit to 6 secondary accounts)
     if top_cps:
-        cp_list = list(top_cps)[:8]  # sample top 8 CPs
-        secondary_txns = pl.scan_parquet(PARQUET_PATH).filter(
-            pl.col("counterparty_id").is_in(cp_list) & (pl.col("account_id") != account_id)
-        ).group_by(["account_id", "counterparty_id"]).agg([
-            pl.len().alias("count"),
-            pl.col("amount").sum().alias("amount"),
-            pl.col("txn_type").first().alias("first_type")
-        ]).sort("amount", descending=True).head(8).collect()
-        
-        # Get metadata for secondary accounts
-        sec_acct_ids = secondary_txns["account_id"].unique().to_list()
+        cp_list = list(top_cps)[:6]
+        # Query secondary accounts from SQLite
+        with get_db() as conn:
+            c = conn.cursor()
+            q = f"SELECT account_id, counterparty_id, amount, txn_type FROM transactions WHERE counterparty_id IN ({','.join(['?']*len(cp_list))}) AND account_id != ? LIMIT 10"
+            c.execute(q, cp_list + [account_id])
+            sec_rows = [dict(r) for r in c.fetchall()]
+
+        # Complement with baseline Parquet if available
+        if len(sec_rows) < 6 and os.path.exists(PARQUET_PATH):
+            try:
+                parquet_sec = pl.scan_parquet(PARQUET_PATH).filter(
+                    pl.col("counterparty_id").is_in(cp_list) & (pl.col("account_id") != account_id)
+                ).group_by(["account_id", "counterparty_id"]).agg([
+                    pl.len().alias("count"),
+                    pl.col("amount").sum().alias("amount"),
+                    pl.col("txn_type").first().alias("txn_type")
+                ]).sort("amount", descending=True).head(6).collect()
+                for pr in parquet_sec.iter_rows(named=True):
+                    if not any(sr.get("account_id") == pr["account_id"] and sr.get("counterparty_id") == pr["counterparty_id"] for sr in sec_rows):
+                        sec_rows.append(pr)
+            except Exception:
+                pass
+
+        sec_acct_ids = list(set(r["account_id"] for r in sec_rows if r.get("account_id")))
+
         if sec_acct_ids:
             with get_db() as conn:
-                cursor = conn.cursor()
+                c = conn.cursor()
                 q = f"SELECT account_id, risk_score, risk_level, primary_pattern FROM accounts WHERE account_id IN ({','.join(['?']*len(sec_acct_ids))})"
-                cursor.execute(q, sec_acct_ids)
-                sec_meta = {r["account_id"]: dict(r) for r in cursor.fetchall()}
+                c.execute(q, sec_acct_ids)
+                sec_meta = {r["account_id"]: dict(r) for r in c.fetchall()}
                 
-            for r in secondary_txns.iter_rows(named=True):
+            for r in sec_rows:
                 sec_id = r["account_id"]
                 cp_id = r["counterparty_id"]
                 
                 # Add node if not added yet
                 if not any(n["id"] == sec_id for n in nodes):
-                    m = sec_meta.get(sec_id, {"risk_score": 20, "risk_level": "LOW", "primary_pattern": "Standard"})
+                    m = sec_meta.get(sec_id, {"risk_score": 25, "risk_level": "LOW", "primary_pattern": "Peer Account"})
                     nodes.append({
                         "id": sec_id,
                         "label": f"Peer {sec_id}",
@@ -412,16 +487,16 @@ def get_account_network_graph(account_id: str, max_cps=25):
                     })
                     
                 # Add edge
-                is_credit = (r["first_type"] == "C")
-                src = cp_id if is_credit else sec_id
-                dst = sec_id if is_credit else cp_id
+                is_cred = (r["txn_type"] == "C")
+                src = cp_id if is_cred else sec_id
+                dst = sec_id if is_cred else cp_id
                 edges.append({
                     "id": f"e_{src}_{dst}_sec",
                     "source": src,
                     "target": dst,
                     "type": "PEER_FLOW",
                     "amount": round(r["amount"] or 0.0, 2),
-                    "count": r["count"],
+                    "count": 1,
                     "label": f"₹{r['amount']:,.0f}"
                 })
                 

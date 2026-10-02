@@ -10,7 +10,9 @@ import {
   FileSearch,
   Activity,
   Terminal,
-  ExternalLink
+  ExternalLink,
+  UploadCloud,
+  Bot
 } from 'lucide-react';
 
 import { DashboardView } from './views/DashboardView';
@@ -20,10 +22,10 @@ import { AccountsView } from './views/AccountsView';
 import { NetworkView } from './views/NetworkView';
 import { AnalyticsView } from './views/AnalyticsView';
 import { SettingsView } from './views/SettingsView';
+import { IngestionView } from './views/IngestionView';
 import { AIChatView } from './views/AIChatView';
-import { Bot } from 'lucide-react';
 
-type Tab = 'dashboard' | 'alerts' | 'investigation' | 'accounts' | 'network' | 'analytics' | 'chat' | 'settings';
+type Tab = 'dashboard' | 'alerts' | 'investigation' | 'accounts' | 'network' | 'analytics' | 'chat' | 'settings' | 'ingestion';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
@@ -173,6 +175,18 @@ export const App: React.FC = () => {
               <Sliders className={`w-4 h-4 ${activeTab === 'settings' ? 'text-blue-600' : 'text-slate-500'}`} />
               <span>Threshold Settings</span>
             </button>
+
+            <button
+              onClick={() => setActiveTab('ingestion')}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition ${
+                activeTab === 'ingestion'
+                  ? 'font-semibold bg-blue-50 text-blue-700 border-l-4 border-blue-600 shadow-sm shadow-blue-500/10'
+                  : 'font-normal text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+              }`}
+            >
+              <UploadCloud className={`w-4 h-4 ${activeTab === 'ingestion' ? 'text-blue-600' : 'text-slate-500'}`} />
+              <span>Data Ingestion</span>
+            </button>
           </nav>
         </div>
       </aside>
@@ -195,6 +209,15 @@ export const App: React.FC = () => {
 
           {/* Quick Presets & AI Copilot */}
           <div className="flex items-center gap-3 text-xs">
+            <button
+              onClick={() => setActiveTab('ingestion')}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-2xs hover:shadow-xs transition-all"
+              title="Upload Transactional Data Batch"
+            >
+              <UploadCloud className="w-3.5 h-3.5 text-blue-600" />
+              <span>Upload New Data</span>
+            </button>
+
             <button
               onClick={() => setActiveTab('chat')}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm hover:shadow-[0_0_12px_rgba(37,99,235,0.3)] transition-all"
@@ -253,6 +276,12 @@ export const App: React.FC = () => {
 
           {activeTab === 'settings' && (
             <SettingsView />
+          )}
+
+          {activeTab === 'ingestion' && (
+            <IngestionView
+              onInvestigateAccount={navigateToInvestigation}
+            />
           )}
         </main>
       </div>

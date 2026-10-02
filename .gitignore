@@ -20,6 +20,9 @@ frontend/.vite/
 
 # Backend Generated Caches & DBs
 backend/cache/
+backend/data/staging/
+backend/data/ *. db
+backend/data/ *. sqlite
 *.parquet
 *.db
 *.sqlite
