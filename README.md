@@ -5,10 +5,11 @@
 [![TailwindCSS](https://img.shields.io/badge/UI-Tailwind_CSS_Executive_White--Blue-38B2AC.svg?logo=tailwind-css&logoColor=white)](https://tailwindcss.com)
 [![Polars](https://img.shields.io/badge/Engine-Polars_LazyFrames-CD792C.svg?logo=polars&logoColor=white)](https://pola.rs)
 [![SQLite](https://img.shields.io/badge/Storage-SQLite_Materialized_Indexes-003B57.svg?logo=sqlite&logoColor=white)](https://sqlite.org)
+[![Dynamic Ingestion](https://img.shields.io/badge/Pipeline-Dynamic_Ingestion_%26_Rollback-0ea5e9.svg)](#6-key-features--analyst-tools)
 [![Compliance](https://img.shields.io/badge/Compliance-RBI_Innovation_Hub_AML-blue.svg)](https://rbihub.in)
-[![Tests](https://img.shields.io/badge/Tests-10%2F10_Passing_(100%25)-brightgreen.svg)](#8-verification--unit-testing)
+[![Tests](https://img.shields.io/badge/Tests-18%2F18_Passing_(100%25)-brightgreen.svg)](#8-verification--unit-testing)
 
-> **High-performance, explainable Anti-Money Laundering (AML) platform designed for the Reserve Bank of India (RBI) Innovation Hub Challenge.** Analyzes **7.42 million retail banking transactions** across **40,038 bank accounts** to uncover mule networks, transit funnels, and circular laundering syndicates in sub-second latency.
+> **High-performance, explainable Anti-Money Laundering (AML) platform designed for the Reserve Bank of India (RBI) Innovation Hub Challenge.** Analyzes **7.42 million retail banking transactions** across **40,038 bank accounts** to uncover mule networks, transit funnels, and circular laundering syndicates with sub-second latency, live batch ingestion, and regulatory-grade reporting.
 
 ---
 
@@ -22,10 +23,11 @@ Money laundering through **mule accounts** (accounts rented, purchased, or coerc
 2. **Defensible Bipartite Graph Modeling:** Accurately models single-legged banking ledgers as an Account $\leftrightarrow$ Counterparty bipartite graph without fabricating artificial account-to-account linkages.
 3. **Four RBI-Aligned Forensic Engines:** Detects Fan-In/Fan-Out funnels, Bipartite Reciprocal Loops, Pass-Through Transit funnels, and New Account Demographic Rings.
 4. **Explainable Composite Risk Score (0–100):** Every flagged account includes normalized scoring backed by concrete, human-readable bullet points and transaction figures.
-5. **Conversational AI Forensic Copilot:** An intelligent assistant with natural language access to the live ledger telemetry, rule heuristics, and case summaries.
-6. **Regulatory Compliance Dossiers:** One-click automated generation of executive AML PDF reports and official law-enforcement Suspicious Activity Report (SAR) PDF dossiers.
-7. **Dynamic Runtime Threshold Tuning:** On-the-fly threshold adjustments with persistent instant re-evaluation across all 40,038 accounts.
-8. **Reversible Case Triage:** Enterprise investigation workflow featuring *Under Review*, *Confirm Mule*, *Clear Account*, and *Redo (Revert to Previous State)*.
+5. **Live Dynamic Data Ingestion Pipeline:** Upload new CSV/XLSX transaction batches, perform deterministic entity resolution, verify staging previews, commit to persistent storage, and trigger real-time fraud scoring with 1-click atomic rollback.
+6. **Conversational AI Forensic Copilot:** An intelligent assistant with natural language access to live ledger telemetry, rule heuristics, and case summaries.
+7. **Regulatory Compliance Dossiers:** One-click automated generation of executive AML PDF reports and official law-enforcement Suspicious Activity Report (SAR) PDF dossiers.
+8. **Dynamic Runtime Threshold Tuning:** On-the-fly threshold adjustments with persistent instant re-evaluation across all 40,038 accounts.
+9. **Reversible Case Triage:** Enterprise investigation workflow featuring *Under Review*, *Confirm Mule*, *Clear Account*, and *Redo (Revert to Previous State)*.
 
 ---
 
@@ -33,8 +35,8 @@ Money laundering through **mule accounts** (accounts rented, purchased, or coerc
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                               1. RAW BANKING DATASET                                   │
-│       ./EDA-Phase-1/ (accounts.csv, customers.csv, transactions_part_0..5.csv)         │
+│                              1. RAW BANKING DATASETS                                   │
+│        ./Datasets/ (accounts.csv, customers.csv, transactions_part_0..5.csv)           │
 └───────────────────────────────────────────┬────────────────────────────────────────────┘
                                             │
 ┌───────────────────────────────────────────▼────────────────────────────────────────────┐
@@ -59,6 +61,7 @@ Money laundering through **mule accounts** (accounts rented, purchased, or coerc
 │  ├── /api/accounts           ── Directory of 40,038 Accounts with Search & Sorting     │
 │  ├── /api/accounts/{id}      ── Deep Forensic Profiles, KYC & 100-Score Signals        │
 │  ├── /api/accounts/{id}/net  ── Bipartite Adjacency Topology Generator                │
+│  ├── /api/ingestion/*        ── Upload, Staging Preview, Atomic Commit & Rollback      │
 │  ├── /api/settings           ── Persistent Threshold Configuration & Auto-Recalc      │
 │  └── /api/chat               ── AI Forensic Copilot LLM & Natural Language Reasoning   │
 └───────────────────────────────────────────┬────────────────────────────────────────────┘
@@ -66,6 +69,7 @@ Money laundering through **mule accounts** (accounts rented, purchased, or coerc
 ┌───────────────────────────────────────────▼────────────────────────────────────────────┐
 │               5. EXECUTIVE WHITE-BLUE REACT 18 / TYPESCRIPT INTERFACE (Port 3000)       │
 │  - Authoritative Times New Roman Typography & Enterprise Visual Polish                 │
+│  - Dynamic Data Ingestion Hub with Live Drag-and-Drop & Batch Staging Preview          │
 │  - Interactive Radial Bipartite Canvas Topology Visualizer                             │
 │  - One-Click PDF Dossiers (Dashboard Executive Report & Formal SAR Dossier)           │
 │  - AI AML Forensic Copilot Chat Drawer with Quick Prompt Chips                         │
@@ -126,6 +130,13 @@ To maintain strict analytical validity, post-investigation outcome columns (`fre
 
 ## 6. Key Features & Analyst Tools
 
+### 📥 Dynamic Data Ingestion & Fraud Re-Analysis Pipeline
+- **Flexible Batch Ingestion:** Drag-and-drop `.csv` or `.xlsx` files with flexible column headers.
+- **Deterministic Entity Resolution:** Automatically identifies whether incoming records represent new or existing accounts/customers and detects conflicting status attributes.
+- **Interactive Staging Verification:** Preview parsed samples, column mappings, and resolution classifications prior to committing.
+- **Atomic Persistence & Instant Rescoring:** Atomic SQLite insertion triggers real-time fraud scoring across all four forensic engines, immediately updating risk scores and triage alerts.
+- **Safe Rollback Engine:** Revert any imported batch with a single click, cleanly restoring baseline state without data corruption.
+
 ### 🤖 AI AML Forensic Copilot
 - Natural language investigation assistant trained on RBI detection guidelines.
 - Directly queries live database telemetry across all 40,038 accounts.
@@ -138,13 +149,7 @@ To maintain strict analytical validity, post-investigation outcome columns (`fre
 - **Alert Queue CSV:** Instant export of active alerts for external SIEM and audit tracking.
 
 ### ⚙️ Dynamic Parameter Configuration
-- Investigators can modify engine thresholds in real time:
-  - Minimum Fan-In Counterparties (default: `6`)
-  - Minimum Fan-Out Counterparties (default: `5`)
-  - Pass-Through Ratio Cutoff (default: `0.85`)
-  - New Account Horizon (default: `90` days)
-  - Critical Severity Cutoff (default: `80`)
-  - High Severity Cutoff (default: `60`)
+- Investigators can modify engine thresholds in real time (Fan-in/Fan-out counts, Pass-through ratio, New account horizons, and Risk thresholds).
 - Updates trigger immediate background re-evaluation across all 40,038 accounts with database persistence and one-click baseline reset.
 
 ### 🔄 Reversible Case Triage & Redo Workflow
@@ -159,39 +164,44 @@ To maintain strict analytical validity, post-investigation outcome columns (`fre
 ## 7. Project Structure
 
 ```
-T33-MuleTrace/
+T33-MuleTrac/
 ├── backend/
 │   ├── app/
-│   │   ├── config.py                 # Application settings & database paths
+│   │   ├── config.py                 # Application settings & dataset path resolvers
+│   │   ├── db.py                     # SQLite connection manager & auto-init
 │   │   ├── main.py                   # FastAPI initialization & router mounting
 │   │   ├── ingestion/
-│   │   │   ├── build_db.py           # Polars ingestion & SQLite table builder
-│   │   │   └── data_loader.py        # Streaming lazy reader & parquet cacher
-│   │   ├── models/
-│   │   │   └── schemas.py            # Pydantic request/response schemas
+│   │   │   ├── build_db.py           # Polars big data ingestion & SQLite builder
+│   │   │   ├── dynamic_ingestion.py  # Live batch validation, scoring & rollback engine
+│   │   │   └── init_dynamic_db.py    # Schema upgrade & table migration utility
 │   │   ├── routes/
 │   │   │   ├── dashboard.py          # /api/dashboard/summary
 │   │   │   ├── alerts.py             # /api/alerts
 │   │   │   ├── accounts.py           # /api/accounts
 │   │   │   ├── investigations.py     # /api/investigations
 │   │   │   ├── analytics.py          # /api/analytics
+│   │   │   ├── ingestion.py          # /api/ingestion (upload, commit, rollback, history)
 │   │   │   ├── settings_routes.py    # /api/settings
 │   │   │   └── chat_routes.py        # /api/chat
 │   │   └── services/
-│   │       ├── detection_engine.py   # Mathematical scoring algorithms
-│   │       ├── network_service.py    # Bipartite graph generator
-│   │       ├── query_service.py      # Database query handlers
-│   │       └── ai_service.py         # Forensic AI Copilot reasoning engine
-│   └── tests/
-│       └── test_detection_and_api.py # Automated test suite (10/10 tests)
+│   │       ├── detection_engine.py   # 4 core mathematical AML scoring algorithms
+│   │       ├── query_service.py      # Unified SQLite + Parquet query handlers
+│   │       └── ai_chat_service.py    # Forensic AI Copilot reasoning engine
+│   ├── cache/
+│   │   └── transactions.parquet      # 7.42M columnar transactions cache (ZSTD compressed)
+│   ├── data/
+│   │   ├── muletrace.db              # Materialized SQLite operational database
+│   │   └── staging/                  # Temporary staging directory for batch uploads
+│   ├── tests/
+│   │   ├── test_detection_and_api.py # Platform & endpoint unit test suite (10 tests)
+│   │   └── test_dynamic_ingestion.py # Dynamic upload, scoring & rollback test suite (8 tests)
+│   └── requirements.txt              # Backend runtime dependencies
 ├── frontend/
 │   ├── src/
-│   │   ├── api/index.ts              # Type-safe Axios client
 │   │   ├── components/
 │   │   │   └── NetworkGraph.tsx      # Canvas bipartite network visualizer
 │   │   ├── utils/
-│   │   │   ├── exportReport.ts       # jsPDF Executive Dashboard & SAR generator
-│   │   │   └── exportCSV.ts          # Alerts CSV exporter
+│   │   │   └── exportReport.ts       # jsPDF Executive Dashboard & SAR generator
 │   │   ├── views/
 │   │   │   ├── DashboardView.tsx     # Executive operations overview
 │   │   │   ├── AlertsView.tsx        # Alert queue & multi-filter triage
@@ -199,15 +209,21 @@ T33-MuleTrace/
 │   │   │   ├── AccountsView.tsx      # 40,038 bank accounts registry
 │   │   │   ├── NetworkView.tsx       # Bipartite topology graph studio
 │   │   │   ├── AnalyticsView.tsx     # 5-year behavioral distributions
+│   │   │   ├── IngestionView.tsx     # Dynamic data ingestion & rollback hub
 │   │   │   ├── AIChatView.tsx        # AML Forensic Copilot chat interface
 │   │   │   └── SettingsView.tsx      # Detection parameter tuner
-│   │   ├── App.tsx                   # Main application layout & navigation
-│   │   └── index.css                 # Universal Times New Roman typography
+│   │   ├── App.tsx                   # Main layout & executive navigation
+│   │   ├── api.ts                    # Type-safe API client & interfaces
+│   │   └── index.css                 # Times New Roman typography & design tokens
 │   ├── tailwind.config.js            # Design tokens & color system
 │   └── package.json                  # Frontend dependencies
-├── EDA-Phase-1/                      # Raw banking dataset CSV files
+├── Datasets/                         # The 9 Core Raw Banking Dataset CSV Files
+│   ├── accounts.csv
+│   ├── customers.csv
+│   ├── customer_account_linkage.csv
+│   └── transactions_part_0..5.csv
 ├── run_muletrace.py                  # One-command dual-server launcher
-├── start_muletrace.bat               # Windows double-click runner
+├── requirements.txt                  # Streamlined Python runtime dependencies
 └── README.md                         # Comprehensive documentation
 ```
 
@@ -219,25 +235,20 @@ MuleTrace includes an automated test suite verifying ingestion, detection models
 
 ```bash
 cd backend
-python tests/test_detection_and_api.py
+python -m pytest
 ```
 
 ### Test Suite Results:
 ```text
-test_account_profile_and_risk ..... ok
-test_account_transactions ......... ok
-test_accounts_search .............. ok
-test_alerts_pagination_and_filter . ok
-test_analytics_endpoint ........... ok
-test_bipartite_network ............ ok
-test_dashboard_summary ............ ok
-test_health_check ................. ok
-test_investigation_status_update .. ok
-test_settings_and_recalc .......... ok
-----------------------------------------------------------------------
-Ran 10 tests in 0.734s
+============================= test session starts =============================
+platform win32 -- Python 3.14.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Users\prasa\Documents\T33-MuleTrac\backend
+collected 18 items
 
-OK (100% Pass Rate)
+tests/test_detection_and_api.py ..........                               [ 55%]
+tests/test_dynamic_ingestion.py ........                                 [100%]
+
+======================== 18 passed in 2.69s (100% Pass Rate) ========================
 ```
 
 ---
@@ -248,87 +259,40 @@ OK (100% Pass Rate)
 - **Python 3.10+**
 - **Node.js 18+** and **npm**
 
-### Step 1: Clone & Prepare Dataset
-Ensure the raw banking dataset files (`accounts.csv`, `customers.csv`, `customer_account_linkage.csv`, `transactions_part_0.csv` through `transactions_part_5.csv`) are located in:
-```
-./EDA-Phase-1/
-```
-
-### Step 2: Build Database (Run Once)
-To initialize the SQLite database, compute materialized indexes, and build Parquet caches:
+### Step 1: Install Python Dependencies
 ```bash
-python backend/app/ingestion/build_db.py
+pip install -r requirements.txt
 ```
-*(Ingests all 7.42 million transactions in ~25 seconds).*
 
-### Step 3: Run the Platform
-
-#### Option A: One-Command Python Runner
+### Step 2: Run the Platform (Single Command)
 ```bash
 python run_muletrace.py
 ```
+- **Web UI:** [http://localhost:3000](http://localhost:3000)
+- **FastAPI Swagger Docs:** [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
-#### Option B: Windows Batch Runner
-Double-click `start_muletrace.bat` in the root folder.
-
-#### Option C: Manual Independent Startup
-**Backend Server:**
-```bash
-cd backend
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
-```
-- Swagger API Docs: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-
-**Frontend Server:**
-```bash
-cd frontend
-npm install
-npm run dev
-```
-- Web Application: [http://localhost:3000](http://localhost:3000)
+*(Note: On first startup, MuleTrace automatically verifies the SQLite database and columnar Parquet cache).*
 
 ---
 
-## 10. 60-Second Demo Presentation Walkthrough
-
-Follow this 5-step walkthrough for competition demos and evaluation panels:
-
-1. **Macro Intelligence Dashboard (`0:00 – 0:15`):**
-   - Review live KPIs (**40,038 Accounts**, **7.42M Transactions Analyzed**, **2,797 Flagged Accounts**, **222 Critical Severity**).
-   - Point out the 24-month credit vs debit flow telemetry and the 4 detection engine breakdown bars.
-2. **Alert Queue & Triage (`0:15 – 0:30`):**
-   - Click *Review Open Alerts*. Filter by `Severity: Critical`.
-   - Click *Investigate* on top mule account **`ACCT_149010`**.
-3. **Forensic Studio & Evidence Dossier (`0:30 – 0:45`):**
-   - Review the *Why Flagged* card: shows **98.4% pass-through volume**, **24 counterparties**, and **loop connections**.
-   - Inspect the interactive transaction ledger with instant Credit/Debit filtering.
-4. **Bipartite Topology & Reciprocal Flow (`0:45 – 0:55`):**
-   - Navigate to *Network Topology* for `ACCT_149010`.
-   - Interact with the canvas: highlight shared counterparty bridges and orange reciprocal flow loops.
-5. **AI Copilot & Compliance Export (`0:55 – 1:00`):**
-   - Open *AI Forensic Copilot* and click *"Why is ACCT_149010 flagged?"* to see real-time natural language reasoning.
-   - Click **[Export SAR (PDF)]** to download a regulatory-grade investigative dossier.
-   - Transition the case to **[Confirm Mule]** or test the reversible **[Redo]** state.
-
----
-
-## 11. Technology Stack Summary
+## 10. Technology Stack Summary
 
 | Layer | Component | Description |
 |---|---|---|
-| **Data Ingestion** | `Polars 0.20+` | Rust-based vectorized engine scanning 7.42M rows with multi-threaded LazyFrames |
+| **Data Ingestion** | `Polars 1.0+` | Rust-based vectorized engine scanning 7.42M rows with multi-threaded LazyFrames |
 | **Storage & Indexing** | `SQLite 3` + `Parquet` | Materialized views with compound B-Tree indexes for $<15\text{ms}$ transaction queries |
 | **Backend API** | `FastAPI` + `Pydantic v2` | Asynchronous REST endpoints with automatic OpenAPI documentation |
+| **Dynamic Ingestion** | `Multipart + OpenPyXL` | Multi-format upload parser with entity resolution and atomic rollback |
 | **Frontend Framework** | `React 18` + `TypeScript` | Enterprise component architecture with strict type safety |
-| **Styling & Theme** | `Tailwind CSS` | Executive white-blue visual design, ambient glow elevations, and universal Times New Roman typography |
+| **Styling & Theme** | `Tailwind CSS` | Executive white-blue visual design, ambient glow elevations, and universal typography |
 | **Visualization** | `Recharts` + `HTML5 Canvas` | High-density volume telemetry charts and radial bipartite graph visualizer |
 | **Document Generation** | `jsPDF` + `autoTable` | Client-side vector PDF generation for executive reports and formal SAR dossiers |
 | **AI Copilot** | `MuleTrace Forensic LLM` | Natural language forensic assistant with live database telemetry integration |
 
 ---
 
-## 12. Authors & Acknowledgments
+## 11. Authors & Acknowledgments
 
 - **Platform:** MuleTrace — AML & Mule Account Detection Platform
 - **Challenge:** Reserve Bank of India (RBI) Innovation Hub AML Hackathon
-- **Focus:** Explainable Financial Crime Detection, Bipartite Graph Analysis, and Real-Time Regulatory Triage
+- **Focus:** Explainable Financial Crime Detection, Dynamic Data Ingestion, Bipartite Graph Analysis, and Real-Time Regulatory Triage
