@@ -12,6 +12,9 @@
 > **High-performance, explainable Anti-Money Laundering (AML) platform designed for the Reserve Bank of India (RBI) Innovation Hub Challenge.** Analyzes **7.42 million retail banking transactions** across **40,038 bank accounts** to uncover mule networks, transit funnels, and circular laundering syndicates with sub-second latency, live batch ingestion, and regulatory-grade reporting.
 
 ---
+Live website link: https://t33-mule-trace.vercel.app/
+---
+<img width="1917" height="1075" alt="image" src="https://github.com/user-attachments/assets/4bcc5f69-e4d6-4d9e-89ee-3b8adf977ec5" />
 
 ## 1. Executive Summary & Problem Context
 
