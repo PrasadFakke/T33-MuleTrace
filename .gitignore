@@ -1,0 +1,40 @@
+# Python / Virtual Environments
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.ipynb_checkpoints/
+
+# Node / Frontend Build
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+.vite/
+frontend/.vite/
+
+# Backend Generated Caches & DBs
+backend/cache/
+*.parquet
+*.db
+*.sqlite
+*.sqlite3
+backend/muletrace.db
+
+# Environment & OS files
+.env
+.env.*
+.DS_Store
+*.tmp
+*.log
+
+# IDE & Editor
+.idea/
+.vscode/
+.claude/
+.streamlit/

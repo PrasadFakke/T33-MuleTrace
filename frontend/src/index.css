@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.text-xs {
+  font-size: 0.8125rem;
+}
+
+.text-sm {
+  font-size: 0.9375rem;
+}
+
+[class~="text-[10px]"] {
+  font-size: 0.75rem;
+}
+
+[class~="text-[11px]"] {
+  font-size: 0.8125rem;
+}
+
+[class~="text-[12px]"] {
+  font-size: 0.875rem;
+}
+
+* {
+  font-family: 'Times New Roman', Times, Georgia, serif !important;
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  background-color: #f8fafc;
+  color: #0f172a;
+  font-family: 'Times New Roman', Times, Georgia, serif !important;
+  font-size: 13.5px;
+  line-height: 1.5;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom scrollbars for clean white-blue theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Custom glow utility helpers */
+.glow-pulse-blue {
+  box-shadow: 0 0 20px rgba(37, 99, 235, 0.25);
+  animation: glowPulse 2.5s infinite alternate ease-in-out;
+}
+
+@keyframes glowPulse {
+  0% {
+    box-shadow: 0 0 10px rgba(37, 99, 235, 0.2);
+  }
+  100% {
+    box-shadow: 0 0 25px rgba(37, 99, 235, 0.4);
+  }
+}

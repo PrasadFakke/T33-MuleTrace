@@ -1,0 +1,12 @@
+{
+  "fan_in_min_cps": 6,
+  "fan_out_min_cps": 5,
+  "pass_through_min_ratio": 0.85,
+  "pass_through_max_ratio": 1.15,
+  "pass_through_min_credit_vol": 25000.0,
+  "new_account_max_days": 90,
+  "risk_critical_threshold": 80,
+  "risk_high_threshold": 60,
+  "risk_medium_threshold": 30,
+  "cycle_path_max_hops": 4
+}
