@@ -12,7 +12,8 @@ import {
   Terminal,
   ExternalLink,
   UploadCloud,
-  Bot
+  Bot,
+  History
 } from 'lucide-react';
 
 import { DashboardView } from './views/DashboardView';
@@ -24,8 +25,9 @@ import { AnalyticsView } from './views/AnalyticsView';
 import { SettingsView } from './views/SettingsView';
 import { IngestionView } from './views/IngestionView';
 import { AIChatView } from './views/AIChatView';
+import { AccountHistoryView } from './views/AccountHistoryView';
 
-type Tab = 'dashboard' | 'alerts' | 'investigation' | 'accounts' | 'network' | 'analytics' | 'chat' | 'settings' | 'ingestion';
+type Tab = 'dashboard' | 'alerts' | 'investigation' | 'accounts' | 'network' | 'analytics' | 'chat' | 'settings' | 'ingestion' | 'history';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
@@ -187,6 +189,18 @@ export const App: React.FC = () => {
               <UploadCloud className={`w-4 h-4 ${activeTab === 'ingestion' ? 'text-blue-600' : 'text-slate-500'}`} />
               <span>Data Ingestion</span>
             </button>
+
+            <button
+              onClick={() => setActiveTab('history')}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition ${
+                activeTab === 'history'
+                  ? 'font-semibold bg-blue-50 text-blue-700 border-l-4 border-blue-600 shadow-sm shadow-blue-500/10'
+                  : 'font-normal text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+              }`}
+            >
+              <History className={`w-4 h-4 ${activeTab === 'history' ? 'text-blue-600' : 'text-slate-500'}`} />
+              <span>Account History</span>
+            </button>
           </nav>
         </div>
       </aside>
@@ -281,6 +295,13 @@ export const App: React.FC = () => {
           {activeTab === 'ingestion' && (
             <IngestionView
               onInvestigateAccount={navigateToInvestigation}
+            />
+          )}
+
+          {activeTab === 'history' && (
+            <AccountHistoryView
+              initialAccountId={investigatingAccountId}
+              onNavigateToInvestigation={navigateToInvestigation}
             />
           )}
         </main>

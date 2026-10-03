@@ -167,6 +167,56 @@ export interface TransactionItem {
   counterparty_id: string;
 }
 
+export interface AccountHistorySummary {
+  account_id: string;
+  customer_id: string;
+  account_holder_name: string;
+  account_status: string;
+  total_inflow: number;
+  total_outflow: number;
+  net_balance_change: number;
+  total_transactions: number;
+  opening_balance: number;
+  closing_balance: number;
+  account_opening_date?: string;
+  kyc_compliant?: string;
+}
+
+export interface AccountHistoryDayStat {
+  date: string;
+  inflow: number;
+  outflow: number;
+  net: number;
+  count: number;
+}
+
+export interface AccountHistoryItem {
+  transaction_id: string;
+  account_id: string;
+  transaction_timestamp: string;
+  mcc_code?: number;
+  channel: string;
+  payment_mode: string;
+  amount: number;
+  txn_type: 'C' | 'D';
+  type_label: string;
+  counterparty_id: string;
+  counterparty_account?: string;
+  balance_after?: number;
+  status: string;
+  remarks: string;
+}
+
+export interface AccountHistoryResponse {
+  summary: AccountHistorySummary;
+  chart_data: AccountHistoryDayStat[];
+  items: AccountHistoryItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
 const API_BASE = '/api';
 
 export async function fetchDashboardSummary(): Promise<DashboardSummary> {
@@ -243,6 +293,43 @@ export async function fetchAccountTransactions(accountId: string, params?: {
 
   const res = await fetch(`${API_BASE}/accounts/${accountId}/transactions?${query.toString()}`);
   if (!res.ok) throw new Error('Failed to fetch account transactions');
+  return res.json();
+}
+
+export async function fetchAccountHistory(
+  accountId: string,
+  params?: {
+    start_date?: string;
+    end_date?: string;
+    min_amount?: number;
+    max_amount?: number;
+    txn_type?: string;
+    page?: number;
+    page_size?: number;
+    sort_order?: string;
+    all_records?: boolean;
+  }
+): Promise<AccountHistoryResponse> {
+  const query = new URLSearchParams();
+  if (params?.start_date) query.set('start_date', params.start_date);
+  if (params?.end_date) query.set('end_date', params.end_date);
+  if (params?.min_amount !== undefined && params.min_amount !== null && !isNaN(params.min_amount)) {
+    query.set('min_amount', params.min_amount.toString());
+  }
+  if (params?.max_amount !== undefined && params.max_amount !== null && !isNaN(params.max_amount)) {
+    query.set('max_amount', params.max_amount.toString());
+  }
+  if (params?.txn_type) query.set('txn_type', params.txn_type);
+  if (params?.page) query.set('page', params.page.toString());
+  if (params?.page_size) query.set('page_size', params.page_size.toString());
+  if (params?.sort_order) query.set('sort_order', params.sort_order);
+  if (params?.all_records) query.set('all_records', 'true');
+
+  const res = await fetch(`${API_BASE}/accounts/${accountId}/history?${query.toString()}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to fetch account history' }));
+    throw new Error(err.detail || 'Failed to fetch account history');
+  }
   return res.json();
 }
 

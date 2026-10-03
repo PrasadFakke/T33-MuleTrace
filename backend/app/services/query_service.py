@@ -1,11 +1,24 @@
 import os
 import json
 import sqlite3
+import glob
 import polars as pl
 from app.config import settings
 from app.db import get_db
 
 PARQUET_PATH = os.path.join(settings.BASE_DIR, "cache", "transactions.parquet")
+
+def _scan_baseline_transactions():
+    if os.path.exists(PARQUET_PATH):
+        return pl.scan_parquet(PARQUET_PATH)
+
+    transaction_files = sorted(
+        glob.glob(os.path.join(settings.DATA_DIR, "transactions_part_*.csv"))
+    )
+    if not transaction_files:
+        return None
+
+    return pl.concat([pl.scan_csv(path) for path in transaction_files])
 
 def get_dashboard_summary():
     with get_db() as conn:
@@ -278,10 +291,11 @@ def get_account_transactions(account_id: str, page=1, page_size=50, txn_type=Non
         sqlite_txns = [dict(r) for r in cursor.fetchall()]
         items.extend(sqlite_txns)
         
-    # 2. Query historical baseline transactions from Parquet cache if available
-    if os.path.exists(PARQUET_PATH):
+    # 2. Query historical baseline transactions from Parquet cache or CSV scan
+    baseline_scan = _scan_baseline_transactions()
+    if baseline_scan is not None:
         try:
-            lf = pl.scan_parquet(PARQUET_PATH).filter(pl.col("account_id") == account_id)
+            lf = baseline_scan.filter(pl.col("account_id") == account_id)
             if txn_type and txn_type.upper() in ["C", "D"]:
                 lf = lf.filter(pl.col("txn_type") == txn_type.upper())
             df = lf.sort("transaction_timestamp", descending=(sort_order.lower() == "desc")).collect()
@@ -306,11 +320,254 @@ def get_account_transactions(account_id: str, page=1, page_size=50, txn_type=Non
         "total_pages": (total + page_size - 1) // page_size if total > 0 else 0
     }
 
+CHANNEL_MODE_MAP = {
+    "UPD": "UPI (Unified Payments)",
+    "UPC": "UPI Collection",
+    "IPM": "IMPS (Immediate Payment)",
+    "RTD": "RTGS (Real Time Gross)",
+    "RTG": "RTGS (Real Time Gross)",
+    "NTD": "NEFT (National Electronic Transfer)",
+    "CSD": "Cash Deposit",
+    "ATW": "ATM Cash Withdrawal",
+    "ATM": "ATM Transaction",
+    "CHQ": "Cheque Clearance",
+    "P2A": "AutoPay / Standing Mandate",
+    "END": "Net Banking Transfer",
+    "FTD": "Fund Transfer (Debit)",
+    "FTC": "Fund Transfer (Credit)",
+    "IAD": "Internet Banking",
+    "SCW": "Self Cheque Withdrawal",
+    "CCL": "Credit Card Clearance",
+    "CHD": "Cheque Deposit",
+    "MCR": "Mobile Banking Transfer",
+    "RCD": "Recurring Deposit Settlement",
+    "IFC": "Interbank Funds Credit",
+    "ASD": "Automated Standing Debit",
+    "PCA": "POS Card Settlement",
+    "STD": "Standing Instruction",
+    "CTC": "Corporate Transfer Clearing",
+    "OCD": "Online Gateway Clearance",
+    "ETD": "Electronic Fund Transfer",
+    "STC": "Settlement Credit",
+    "TPC": "Third-Party Credit",
+    "TPD": "Third-Party Debit",
+    "MAD": "Merchant Payment Debit",
+    "MAC": "Merchant Payment Credit",
+    "IFD": "Interbank Funds Debit",
+    "OPI": "Online Payment Interface",
+    "NWD": "Network Wire Transfer",
+    "APD": "Aadhaar Payment Service",
+    "SID": "Standing Instruction Debit"
+}
+
+def get_account_history(
+    account_id: str,
+    start_date=None,
+    end_date=None,
+    min_amount=None,
+    max_amount=None,
+    txn_type=None,
+    page=1,
+    page_size=25,
+    sort_order="desc",
+    all_records=False
+):
+    """
+    Forensic Account History Query:
+    Returns full filtered transaction history, dynamic summary analytics (inflow, outflow,
+    net balance change, count, opening/closing balance), and date-wise flow visualization data.
+    """
+    # 1. Fetch Account and Customer profile info from SQLite
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT account_id, customer_id, account_status, avg_balance, daily_avg_balance,
+                   monthly_avg_balance, account_opening_date, kyc_compliant, product_family
+            FROM accounts
+            WHERE account_id = ?
+        """, (account_id,))
+        acct_row = cursor.fetchone()
+        if not acct_row:
+            return None
+        acct = dict(acct_row)
+
+        cursor.execute("SELECT customer_id, date_of_birth FROM customers WHERE customer_id = ?", (acct.get("customer_id"),))
+        cust_row = cursor.fetchone()
+        cust = dict(cust_row) if cust_row else {}
+
+        # Query dynamic transactions from SQLite for this account with filters
+        conds = ["account_id = ?"]
+        params = [account_id]
+        if start_date:
+            s_dt = start_date if "T" in start_date else f"{start_date}T00:00:00"
+            conds.append("transaction_timestamp >= ?")
+            params.append(s_dt)
+        if end_date:
+            e_dt = end_date if "T" in end_date else f"{end_date}T23:59:59"
+            conds.append("transaction_timestamp <= ?")
+            params.append(e_dt)
+        if min_amount is not None:
+            conds.append("amount >= ?")
+            params.append(float(min_amount))
+        if max_amount is not None:
+            conds.append("amount <= ?")
+            params.append(float(max_amount))
+        if txn_type and txn_type.upper() in ["C", "D"]:
+            conds.append("txn_type = ?")
+            params.append(txn_type.upper())
+
+        cursor.execute(f"""
+            SELECT transaction_id, account_id, transaction_timestamp, mcc_code,
+                   channel, amount, txn_type, counterparty_id
+            FROM transactions
+            WHERE {" AND ".join(conds)}
+        """, params)
+        raw_items = [dict(r) for r in cursor.fetchall()]
+
+    # 2. Query historical baseline transactions from cache or CSV scan
+    baseline_scan = _scan_baseline_transactions()
+    if baseline_scan is not None:
+        try:
+            lf = baseline_scan.filter(pl.col("account_id") == account_id)
+            if start_date:
+                s_dt = start_date if "T" in start_date else f"{start_date}T00:00:00"
+                lf = lf.filter(pl.col("transaction_timestamp") >= s_dt)
+            if end_date:
+                e_dt = end_date if "T" in end_date else f"{end_date}T23:59:59"
+                lf = lf.filter(pl.col("transaction_timestamp") <= e_dt)
+            if min_amount is not None:
+                lf = lf.filter(pl.col("amount") >= float(min_amount))
+            if max_amount is not None:
+                lf = lf.filter(pl.col("amount") <= float(max_amount))
+            if txn_type and txn_type.upper() in ["C", "D"]:
+                lf = lf.filter(pl.col("txn_type") == txn_type.upper())
+
+            base_df = lf.collect()
+            raw_items.extend(base_df.to_dicts())
+        except Exception as e:
+            print(f"[Warning] Baseline history scan error: {e}")
+
+    # De-duplicate by transaction_id
+    seen_ids = set()
+    unique_items = []
+    for item in raw_items:
+        tid = item.get("transaction_id")
+        if tid not in seen_ids:
+            seen_ids.add(tid)
+            unique_items.append(item)
+
+    # Chronological sort (ascending) to compute running balances and date flows accurately
+    unique_items.sort(key=lambda x: str(x.get("transaction_timestamp", "")))
+
+    total_inflow = 0.0
+    total_outflow = 0.0
+    opening_bal = float(acct.get("avg_balance") or 0.0)
+    current_bal = opening_bal
+
+    date_flow_map = {}
+
+    enriched_items = []
+    for item in unique_items:
+        amt = float(item.get("amount") or 0.0)
+        is_credit = (item.get("txn_type") == "C")
+        if is_credit:
+            total_inflow += amt
+            current_bal += amt
+        else:
+            total_outflow += amt
+            current_bal -= amt
+
+        ch = item.get("channel", "N/A")
+        payment_mode = CHANNEL_MODE_MAP.get(ch, f"{ch} Transfer")
+        mcc = item.get("mcc_code")
+        remarks = f"Channel: {ch}" + (f" | MCC: {mcc}" if mcc else "")
+
+        enriched_item = {
+            "transaction_id": item.get("transaction_id"),
+            "account_id": item.get("account_id"),
+            "transaction_timestamp": item.get("transaction_timestamp"),
+            "mcc_code": mcc,
+            "channel": ch,
+            "payment_mode": payment_mode,
+            "amount": amt,
+            "txn_type": "C" if is_credit else "D",
+            "type_label": "Inflow" if is_credit else "Outflow",
+            "counterparty_id": item.get("counterparty_id", "N/A"),
+            "counterparty_account": item.get("counterparty_id", "N/A"),
+            "balance_after": round(current_bal, 2),
+            "status": "COMPLETED",
+            "remarks": remarks
+        }
+        enriched_items.append(enriched_item)
+
+        # Date-wise flow visualization aggregation
+        ts = str(item.get("transaction_timestamp", ""))
+        d_key = ts.split("T")[0] if "T" in ts else ts.split(" ")[0]
+        if d_key:
+            if d_key not in date_flow_map:
+                date_flow_map[d_key] = {"date": d_key, "inflow": 0.0, "outflow": 0.0, "count": 0}
+            if is_credit:
+                date_flow_map[d_key]["inflow"] += amt
+            else:
+                date_flow_map[d_key]["outflow"] += amt
+            date_flow_map[d_key]["count"] += 1
+
+    chart_data = sorted(date_flow_map.values(), key=lambda x: x["date"])
+    for cd in chart_data:
+        cd["inflow"] = round(cd["inflow"], 2)
+        cd["outflow"] = round(cd["outflow"], 2)
+        cd["net"] = round(cd["inflow"] - cd["outflow"], 2)
+
+    total_count = len(enriched_items)
+    net_change = round(total_inflow - total_outflow, 2)
+    closing_bal = round(current_bal, 2)
+
+    # Sort final transaction items according to requested sort_order
+    is_desc = (sort_order.lower() == "desc")
+    enriched_items.sort(key=lambda x: str(x.get("transaction_timestamp", "")), reverse=is_desc)
+
+    summary = {
+        "account_id": acct.get("account_id"),
+        "customer_id": acct.get("customer_id") or "N/A",
+        "account_holder_name": f"Customer {acct.get('customer_id')}" if acct.get("customer_id") else "N/A",
+        "account_status": (acct.get("account_status") or "ACTIVE").upper(),
+        "total_inflow": round(total_inflow, 2),
+        "total_outflow": round(total_outflow, 2),
+        "net_balance_change": net_change,
+        "total_transactions": total_count,
+        "opening_balance": round(opening_bal, 2),
+        "closing_balance": closing_bal,
+        "account_opening_date": acct.get("account_opening_date") or "N/A",
+        "kyc_compliant": acct.get("kyc_compliant") or "N/A"
+    }
+
+    if all_records:
+        return {
+            "summary": summary,
+            "chart_data": chart_data,
+            "items": enriched_items,
+            "total": total_count,
+            "page": 1,
+            "page_size": total_count,
+            "total_pages": 1
+        }
+
+    start_idx = (page - 1) * page_size
+    end_idx = start_idx + page_size
+    paginated_items = enriched_items[start_idx:end_idx]
+
+    return {
+        "summary": summary,
+        "chart_data": chart_data,
+        "items": paginated_items,
+        "total": total_count,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": (total_count + page_size - 1) // page_size if total_count > 0 else 0
+    }
+
 def get_account_network_graph(account_id: str, max_cps=25):
     """Build bipartite Account <-> Counterparty network graph with 2-hop bridging"""
-    if not os.path.exists(PARQUET_PATH):
-        return {"nodes": [], "edges": []}
-        
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT account_id, risk_score, risk_level, primary_pattern FROM accounts WHERE account_id = ?", (account_id,))
@@ -329,13 +586,12 @@ def get_account_network_graph(account_id: str, max_cps=25):
         """, (account_id,))
         all_txns_list = [dict(r) for r in cursor.fetchall()]
 
-    # 2. Fetch baseline transactions from Parquet
-    if os.path.exists(PARQUET_PATH):
-        try:
-            baseline_txns = pl.scan_parquet(PARQUET_PATH).filter(pl.col("account_id") == account_id).collect()
-            all_txns_list.extend(baseline_txns.to_dicts())
-        except:
-            pass
+    # Use the generated cache when available, or scan source CSVs on deployments
+    # where generated cache files are not included.
+    baseline_scan = _scan_baseline_transactions()
+    if baseline_scan is not None:
+        baseline_txns = baseline_scan.filter(pl.col("account_id") == account_id).collect()
+        all_txns_list.extend(baseline_txns.to_dicts())
 
     if len(all_txns_list) == 0:
         return {
@@ -444,21 +700,19 @@ def get_account_network_graph(account_id: str, max_cps=25):
             c.execute(q, cp_list + [account_id])
             sec_rows = [dict(r) for r in c.fetchall()]
 
-        # Complement with baseline Parquet if available
-        if len(sec_rows) < 6 and os.path.exists(PARQUET_PATH):
-            try:
-                parquet_sec = pl.scan_parquet(PARQUET_PATH).filter(
-                    pl.col("counterparty_id").is_in(cp_list) & (pl.col("account_id") != account_id)
-                ).group_by(["account_id", "counterparty_id"]).agg([
-                    pl.len().alias("count"),
-                    pl.col("amount").sum().alias("amount"),
-                    pl.col("txn_type").first().alias("txn_type")
-                ]).sort("amount", descending=True).head(6).collect()
-                for pr in parquet_sec.iter_rows(named=True):
-                    if not any(sr.get("account_id") == pr["account_id"] and sr.get("counterparty_id") == pr["counterparty_id"] for sr in sec_rows):
-                        sec_rows.append(pr)
-            except Exception:
-                pass
+        # Complement with baseline transactions when available.
+        if len(sec_rows) < 6 and baseline_scan is not None:
+            baseline_sec = baseline_scan.filter(
+                pl.col("counterparty_id").is_in(cp_list)
+                & (pl.col("account_id") != account_id)
+            ).group_by(["account_id", "counterparty_id"]).agg([
+                pl.len().alias("count"),
+                pl.col("amount").sum().alias("amount"),
+                pl.col("txn_type").first().alias("txn_type")
+            ]).sort("amount", descending=True).head(6).collect()
+            for pr in baseline_sec.iter_rows(named=True):
+                if not any(sr.get("account_id") == pr["account_id"] and sr.get("counterparty_id") == pr["counterparty_id"] for sr in sec_rows):
+                    sec_rows.append(pr)
 
         sec_acct_ids = list(set(r["account_id"] for r in sec_rows if r.get("account_id")))
 

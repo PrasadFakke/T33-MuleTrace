@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { DashboardSummary, AccountProfileResponse, AlertItem } from '../api';
+import { DashboardSummary, AccountProfileResponse, AlertItem, AccountHistorySummary, AccountHistoryItem } from '../api';
 
 export function exportDashboardPDF(data: DashboardSummary) {
   const doc = new jsPDF({
@@ -390,4 +390,229 @@ export function exportAlertsCSV(alerts: AlertItem[]) {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+}
+
+export interface ExportHistoryPDFParams {
+  summary: AccountHistorySummary;
+  transactions: AccountHistoryItem[];
+  filterCriteria: {
+    startDate?: string;
+    endDate?: string;
+    minAmount?: number;
+    maxAmount?: number;
+  };
+}
+
+export function exportAccountHistoryPDF(params: ExportHistoryPDFParams) {
+  const { summary, transactions, filterCriteria } = params;
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const now = new Date();
+  const dateStr = now.toISOString().replace('T', ' ').substring(0, 19);
+
+  // Background Header Banner
+  doc.setFillColor(15, 23, 42); // slate-900 obsidian
+  doc.rect(0, 0, 210, 36, 'F');
+
+  // Title & Subtitle
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(37, 99, 235); // Blue
+  doc.text('MuleTrace – Financial Fraud Intelligence', 14, 15);
+
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(241, 245, 249); // slate-100
+  doc.text('Account Transaction History Report', 14, 23);
+
+  doc.setFontSize(7.5);
+  doc.setTextColor(148, 163, 184); // slate-400
+  doc.text(`CONFIDENTIAL AUDIT DOSSIER  |  GENERATED: ${dateStr} UTC  |  SUBJECT: ${summary.account_id}`, 14, 30);
+
+  let currentY = 43;
+
+  // SECTION 1: ACCOUNT INFORMATION & APPLIED FILTERS
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10.5);
+  doc.setTextColor(30, 41, 59); // slate-800
+  doc.text('1. Account Information & Filter Criteria', 14, currentY);
+  currentY += 3.5;
+
+  const startFormatted = filterCriteria.startDate ? filterCriteria.startDate : 'All Available History';
+  const endFormatted = filterCriteria.endDate ? filterCriteria.endDate : 'Latest Available';
+  const minAmtFormatted = filterCriteria.minAmount !== undefined && filterCriteria.minAmount !== null ? `INR ${filterCriteria.minAmount.toLocaleString('en-IN')}` : 'No Minimum (>= 0)';
+  const maxAmtFormatted = filterCriteria.maxAmount !== undefined && filterCriteria.maxAmount !== null ? `INR ${filterCriteria.maxAmount.toLocaleString('en-IN')}` : 'No Maximum';
+
+  const accountInfoRows = [
+    ['Account ID', summary.account_id, 'Account Holder', summary.account_holder_name || 'N/A'],
+    ['Account Status', summary.account_status || 'ACTIVE', 'KYC Compliance', summary.kyc_compliant || 'COMPLIANT'],
+    ['Selected Start Date', startFormatted, 'Selected End Date', endFormatted],
+    ['Selected Min Amount', minAmtFormatted, 'Selected Max Amount', maxAmtFormatted]
+  ];
+
+  autoTable(doc, {
+    startY: currentY,
+    body: accountInfoRows,
+    theme: 'grid',
+    bodyStyles: { fontSize: 7.5, textColor: [51, 65, 85] },
+    columnStyles: {
+      0: { fontStyle: 'bold', fillColor: [248, 250, 252], cellWidth: 42 },
+      1: { cellWidth: 48 },
+      2: { fontStyle: 'bold', fillColor: [248, 250, 252], cellWidth: 42 },
+      3: { cellWidth: 50 }
+    },
+    margin: { left: 14, right: 14 }
+  });
+
+  currentY = (doc as any).lastAutoTable.finalY + 7;
+
+  // SECTION 2: FORENSIC FINANCIAL SUMMARY
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10.5);
+  doc.setTextColor(30, 41, 59);
+  doc.text('2. Financial Flow Summary (Filtered Records)', 14, currentY);
+  currentY += 3.5;
+
+  const netPrefix = summary.net_balance_change >= 0 ? '+' : '';
+  const summaryRows = [
+    [
+      'Total Inflow (Credits)',
+      `INR ${summary.total_inflow.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      'Cumulative incoming turnover across selected parameters'
+    ],
+    [
+      'Total Outflow (Debits)',
+      `INR ${summary.total_outflow.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      'Cumulative outgoing dispersal across selected parameters'
+    ],
+    [
+      'Net Balance Change',
+      `${netPrefix}INR ${summary.net_balance_change.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      summary.net_balance_change >= 0 ? 'Net positive liquidity retention' : 'Net negative capital outflow / balance drain'
+    ],
+    [
+      'Total Matching Transactions',
+      `${summary.total_transactions.toLocaleString()} Entries`,
+      '100% indexed verified records matching criteria'
+    ]
+  ];
+
+  autoTable(doc, {
+    startY: currentY,
+    head: [['Summary Indicator', 'Forensic Value', 'Analytical Assessment']],
+    body: summaryRows,
+    theme: 'grid',
+    headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+    bodyStyles: { fontSize: 7.5, textColor: [51, 65, 85] },
+    columnStyles: {
+      0: { fontStyle: 'bold', cellWidth: 55 },
+      1: { fontStyle: 'bold', cellWidth: 50 },
+      2: { cellWidth: 77 }
+    },
+    didParseCell: (data) => {
+      if (data.section === 'body') {
+        if (data.row.index === 0 && data.column.index === 1) {
+          data.cell.styles.textColor = [16, 185, 129]; // emerald
+        } else if (data.row.index === 1 && data.column.index === 1) {
+          data.cell.styles.textColor = [225, 29, 72]; // rose
+        } else if (data.row.index === 2 && data.column.index === 1) {
+          data.cell.styles.textColor = summary.net_balance_change >= 0 ? [16, 185, 129] : [225, 29, 72];
+        }
+      }
+    },
+    margin: { left: 14, right: 14 }
+  });
+
+  currentY = (doc as any).lastAutoTable.finalY + 7;
+
+  // SECTION 3: COMPLETE TRANSACTION DETAILS TABLE
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10.5);
+  doc.setTextColor(30, 41, 59);
+  doc.text(`3. Detailed Transaction Ledger (${transactions.length} Records)`, 14, currentY);
+  currentY += 3.5;
+
+  const txnRows = transactions.map(t => {
+    const isCredit = t.txn_type === 'C';
+    const formattedAmount = `${isCredit ? '+' : '-'}INR ${Math.abs(t.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const formattedBal = t.balance_after !== undefined ? `INR ${t.balance_after.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'N/A';
+    const ts = t.transaction_timestamp.replace('T', ' ');
+
+    return [
+      ts,
+      t.transaction_id,
+      isCredit ? 'Inflow' : 'Outflow',
+      formattedAmount,
+      t.counterparty_id,
+      t.counterparty_account || t.counterparty_id,
+      t.payment_mode,
+      formattedBal,
+      t.status || 'COMPLETED',
+      t.remarks || `Channel: ${t.channel}`
+    ];
+  });
+
+  autoTable(doc, {
+    startY: currentY,
+    head: [[
+      'Date & Time',
+      'Transaction ID',
+      'Inflow / Outflow',
+      'Amount',
+      'Counterparty',
+      'Counterparty Account',
+      'Payment Mode',
+      'Balance After',
+      'Status',
+      'Remarks'
+    ]],
+    body: txnRows,
+    theme: 'striped',
+    headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 6.5 },
+    bodyStyles: { fontSize: 6, textColor: [30, 41, 59] },
+    columnStyles: {
+      0: { cellWidth: 23 },
+      1: { fontStyle: 'bold', cellWidth: 21 },
+      2: { fontStyle: 'bold', cellWidth: 16 },
+      3: { fontStyle: 'bold', cellWidth: 22 },
+      4: { cellWidth: 18 },
+      5: { cellWidth: 20 },
+      6: { cellWidth: 20 },
+      7: { cellWidth: 18 },
+      8: { cellWidth: 12 },
+      9: { cellWidth: 12 }
+    },
+    didParseCell: (data) => {
+      if (data.section === 'body') {
+        const row = transactions[data.row.index];
+        if (row) {
+          const isCredit = row.txn_type === 'C';
+          if (data.column.index === 2) { // Inflow / Outflow column
+            data.cell.styles.textColor = isCredit ? [16, 185, 129] : [225, 29, 72];
+          }
+          if (data.column.index === 3) { // Amount column
+            data.cell.styles.textColor = isCredit ? [16, 185, 129] : [225, 29, 72];
+          }
+        }
+      }
+    },
+    margin: { left: 14, right: 14 },
+    showHead: 'everyPage'
+  });
+
+  // Footer with Page Numbers on all pages
+  const pageCount = (doc as any).internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(7.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`MuleTrace Financial Crime Intelligence — Account History: ${summary.account_id} — Page ${i} of ${pageCount}`, 14, 290);
+    doc.text('RBI Innovation Hub Anti-Money Laundering Framework', 125, 290);
+  }
+
+  doc.save(`MuleTrace_Account_History_${summary.account_id}_${now.toISOString().substring(0, 10)}.pdf`);
 }

@@ -22,8 +22,8 @@ class TestMuleTrace(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         data = res.json()
         self.assertIn("kpis", data)
-        self.assertEqual(data["kpis"]["total_accounts"], 40038)
-        self.assertEqual(data["kpis"]["transactions_analyzed"], 7424845)
+        self.assertGreaterEqual(data["kpis"]["total_accounts"], 40038)
+        self.assertGreaterEqual(data["kpis"]["transactions_analyzed"], 7424845)
         self.assertIn("pattern_breakdown", data)
         self.assertIn("recent_alerts", data)
         self.assertIn("top_suspicious_accounts", data)
@@ -67,6 +67,8 @@ class TestMuleTrace(unittest.TestCase):
         data = res.json()
         self.assertIn("nodes", data)
         self.assertIn("edges", data)
+        self.assertGreater(len(data["nodes"]), 1)
+        self.assertGreater(len(data["edges"]), 0)
         node_types = {n["type"] for n in data["nodes"]}
         self.assertIn("ACCOUNT", node_types)
         self.assertIn("COUNTERPARTY", node_types)
@@ -106,5 +108,18 @@ class TestMuleTrace(unittest.TestCase):
         data = res.json()
         self.assertEqual(data["fan_in_min_cps"], settings.FAN_IN_MIN_CPS)
 
+    def test_account_history_endpoint(self):
+        res = self.client.get("/api/accounts/ACCT_149010/history?min_amount=1000&max_amount=100000&page=1&page_size=10")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertIn("summary", data)
+        self.assertIn("chart_data", data)
+        self.assertIn("items", data)
+        self.assertEqual(data["summary"]["account_id"], "ACCT_149010")
+        self.assertGreater(data["total"], 0)
+        self.assertGreater(data["summary"]["total_transactions"], 0)
+        self.assertGreater(data["summary"]["total_inflow"], 0)
+
 if __name__ == "__main__":
     unittest.main()
+

@@ -4,7 +4,8 @@ from app.services.query_service import (
     get_accounts_paginated,
     get_account_profile,
     get_account_transactions,
-    get_account_network_graph
+    get_account_network_graph,
+    get_account_history
 )
 
 router = APIRouter(prefix="/api/accounts", tags=["Accounts"])
@@ -67,3 +68,33 @@ def get_network(
     max_cps: int = Query(25, ge=5, le=50)
 ):
     return get_account_network_graph(account_id=account_id, max_cps=max_cps)
+
+@router.get("/{account_id}/history")
+def get_history(
+    account_id: str,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    min_amount: Optional[float] = None,
+    max_amount: Optional[float] = None,
+    txn_type: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    sort_order: str = Query("desc"),
+    all_records: bool = Query(False)
+):
+    history = get_account_history(
+        account_id=account_id,
+        start_date=start_date,
+        end_date=end_date,
+        min_amount=min_amount,
+        max_amount=max_amount,
+        txn_type=txn_type,
+        page=page,
+        page_size=page_size,
+        sort_order=sort_order,
+        all_records=all_records
+    )
+    if history is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return history
+
