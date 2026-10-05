@@ -49,13 +49,20 @@ app.include_router(ingestion_router)
 
 @app.get("/")
 def root():
+    from app.db import DATABASE_URL
     return {
         "platform": "MuleTrace",
         "status": "ONLINE",
-        "version": "1.0.0",
+        "version": "1.1.0-pg-ready",
+        "db_engine": "PostgreSQL" if DATABASE_URL else "SQLite",
         "description": "Fintech AML & Mule Detection Engine for RBI Innovation Challenge"
     }
 
 @app.get("/health")
 def health():
-    return {"status": "healthy"}
+    from app.db import DATABASE_URL
+    return {
+        "status": "healthy",
+        "version": "1.1.0-pg-ready",
+        "db_engine": "PostgreSQL" if DATABASE_URL else "SQLite"
+    }
