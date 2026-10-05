@@ -9,16 +9,18 @@ from app.db import get_db
 PARQUET_PATH = os.path.join(settings.BASE_DIR, "cache", "transactions.parquet")
 
 def _scan_baseline_transactions():
+    """
+    Returns lazy scan of transactions parquet cache if available locally.
+    In cloud/production without parquet cache, returns None to avoid scanning
+    7.4M CSV rows into RAM, which causes 512MB RAM OOM crashes on free hosting.
+    Database queries against indexed tables are used instead.
+    """
     if os.path.exists(PARQUET_PATH):
-        return pl.scan_parquet(PARQUET_PATH)
-
-    transaction_files = sorted(
-        glob.glob(os.path.join(settings.DATA_DIR, "transactions_part_*.csv"))
-    )
-    if not transaction_files:
-        return None
-
-    return pl.concat([pl.scan_csv(path) for path in transaction_files])
+        try:
+            return pl.scan_parquet(PARQUET_PATH)
+        except Exception:
+            return None
+    return None
 
 def get_dashboard_summary():
     with get_db() as conn:

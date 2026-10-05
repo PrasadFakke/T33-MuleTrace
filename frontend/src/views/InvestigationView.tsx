@@ -43,6 +43,8 @@ export const InvestigationView: React.FC<InvestigationViewProps> = ({ accountId,
   const [txnPage, setTxnPage] = useState<number>(1);
   const [txnTypeFilter, setTxnTypeFilter] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
+  const [networkLoading, setNetworkLoading] = useState<boolean>(true);
+  const [txnLoading, setTxnLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   // Status Action Modal
@@ -54,23 +56,35 @@ export const InvestigationView: React.FC<InvestigationViewProps> = ({ accountId,
     try {
       setLoading(true);
       setError(null);
-      const [profData, netData, txnData] = await Promise.all([
-        fetchAccountProfile(accountId),
-        fetchAccountNetwork(accountId, 25),
-        fetchAccountTransactions(accountId, { page: txnPage, page_size: 25, txn_type: txnTypeFilter })
-      ]);
+      setNetworkLoading(true);
+      setTxnLoading(true);
+
+      const profData = await fetchAccountProfile(accountId);
       setProfile(profData);
-      setNetwork(netData);
-      setTxns(txnData.items);
-      setTxnTotal(txnData.total);
       if (profData.account.analyst_notes) {
         setAnalystNotes(profData.account.analyst_notes);
       }
+      setLoading(false);
+
+      fetchAccountNetwork(accountId, 25)
+        .then(netData => setNetwork(netData))
+        .catch(err => console.error('Network graph fetch error:', err))
+        .finally(() => setNetworkLoading(false));
+
+      fetchAccountTransactions(accountId, { page: txnPage, page_size: 25, txn_type: txnTypeFilter })
+        .then(txnData => {
+          setTxns(txnData.items);
+          setTxnTotal(txnData.total);
+        })
+        .catch(err => console.error('Transactions fetch error:', err))
+        .finally(() => setTxnLoading(false));
+
     } catch (err: any) {
       console.error('Error fetching investigation details:', err);
       setError(err.message || 'Failed to fetch forensic account details.');
-    } finally {
       setLoading(false);
+      setNetworkLoading(false);
+      setTxnLoading(false);
     }
   };
 
@@ -437,7 +451,19 @@ export const InvestigationView: React.FC<InvestigationViewProps> = ({ accountId,
           </span>
         </div>
 
-        {network && <NetworkGraph data={network} />}
+        {networkLoading ? (
+          <div className="flex flex-col items-center justify-center p-12 text-slate-500 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+            <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent mb-3" />
+            <span className="text-sm font-medium text-slate-700">Generating forensic network topology...</span>
+            <span className="text-xs text-slate-400 mt-0.5">Tracing multi-hop counterparty flow structures</span>
+          </div>
+        ) : network && network.nodes && network.nodes.length > 0 ? (
+          <NetworkGraph data={network} />
+        ) : (
+          <div className="p-8 text-center text-slate-400 text-sm bg-slate-50 rounded-xl border border-slate-100">
+            No counterparty connections found for this account.
+          </div>
+        )}
       </div>
 
       {/* Row 4: Transaction Timeline & Ledger */}
@@ -497,29 +523,46 @@ export const InvestigationView: React.FC<InvestigationViewProps> = ({ accountId,
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {txns.map(t => {
-                const isCredit = t.txn_type === 'C';
-                return (
-                  <tr key={t.transaction_id} className="hover:bg-blue-50/40 transition">
-                    <td className="py-3 px-4 text-blue-600 font-bold">{t.transaction_id}</td>
-                    <td className="py-3 px-4 text-slate-600">{t.transaction_timestamp.replace('T', ' ')}</td>
-                    <td className="py-3 px-4">
-                      <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${
-                        isCredit ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                        'bg-rose-50 text-rose-700 border border-rose-200'
-                      }`}>
-                        {isCredit ? 'CREDIT (IN)' : 'DEBIT (OUT)'}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-slate-700">{t.channel}</td>
-                    <td className={`py-3 px-4 font-bold ${isCredit ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {isCredit ? '+' : '-'}₹{Math.abs(t.amount).toLocaleString()}
-                    </td>
-                    <td className="py-3 px-4 text-slate-900 font-semibold">{t.counterparty_id}</td>
-                    <td className="py-3 px-4 text-slate-600">{t.mcc_code}</td>
-                  </tr>
-                );
-              })}
+              {txnLoading ? (
+                <tr>
+                  <td colSpan={7} className="py-8 text-center text-slate-500">
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent" />
+                      <span className="text-xs font-medium">Loading ledger transactions...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : txns.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-8 text-center text-slate-400 text-xs">
+                    No transactions found matching this filter criteria.
+                  </td>
+                </tr>
+              ) : (
+                txns.map(t => {
+                  const isCredit = t.txn_type === 'C';
+                  return (
+                    <tr key={t.transaction_id} className="hover:bg-blue-50/40 transition">
+                      <td className="py-3 px-4 text-blue-600 font-bold">{t.transaction_id}</td>
+                      <td className="py-3 px-4 text-slate-600">{t.transaction_timestamp.replace('T', ' ')}</td>
+                      <td className="py-3 px-4">
+                        <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${
+                          isCredit ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                          'bg-rose-50 text-rose-700 border border-rose-200'
+                        }`}>
+                          {isCredit ? 'CREDIT (IN)' : 'DEBIT (OUT)'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-slate-700">{t.channel}</td>
+                      <td className={`py-3 px-4 font-bold ${isCredit ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {isCredit ? '+' : '-'}₹{Math.abs(t.amount).toLocaleString()}
+                      </td>
+                      <td className="py-3 px-4 text-slate-900 font-semibold">{t.counterparty_id}</td>
+                      <td className="py-3 px-4 text-slate-600">{t.mcc_code}</td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>

@@ -25,6 +25,14 @@ except ImportError:
     sys.exit(1)
 
 SQLITE_PATH = os.path.join(os.path.dirname(__file__), "data", "muletrace.db")
+if not os.path.exists(SQLITE_PATH):
+    alt = os.path.join(os.path.dirname(os.path.dirname(__file__)), "backend", "data", "muletrace.db")
+    if os.path.exists(alt):
+        SQLITE_PATH = alt
+    elif os.path.exists("backend/data/muletrace.db"):
+        SQLITE_PATH = "backend/data/muletrace.db"
+    elif os.path.exists("data/muletrace.db"):
+        SQLITE_PATH = "data/muletrace.db"
 
 TABLES_ORDER = [
     "accounts",

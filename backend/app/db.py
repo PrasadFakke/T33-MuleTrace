@@ -11,6 +11,23 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = "postgresql://" + DATABASE_URL[11:]
 
+_PG_POOL = None
+
+def get_pg_pool():
+    global _PG_POOL
+    if _PG_POOL is None and DATABASE_URL:
+        try:
+            import psycopg2.pool
+            _PG_POOL = psycopg2.pool.ThreadedConnectionPool(
+                minconn=1,
+                maxconn=15,
+                dsn=DATABASE_URL
+            )
+        except Exception as e:
+            print(f"[PostgreSQL Pool Warning] Failed to initialize connection pool: {e}")
+            _PG_POOL = None
+    return _PG_POOL
+
 
 class PostgresRowWrapper(dict):
     """Wrapper to support both dict-key access (row['account_id']) and index access (row[0]) like sqlite3.Row"""
@@ -64,8 +81,14 @@ class PostgresConnWrapper:
     def rollback(self):
         return self._conn.rollback()
 
+    def execute(self, query, params=None):
+        cur = self.cursor()
+        cur.execute(query, params)
+        return cur
+
     def close(self):
-        return self._conn.close()
+        # We don't close pooled connection here, pool.putconn handles it
+        pass
 
     def __getattr__(self, name):
         return getattr(self._conn, name)
@@ -74,6 +97,29 @@ class PostgresConnWrapper:
 def ensure_database_initialized():
     """Ensure database exists and is populated. Skips if already initialized or using PostgreSQL."""
     if DATABASE_URL:
+        try:
+            import psycopg2
+            from psycopg2.extras import RealDictCursor
+            conn = psycopg2.connect(DATABASE_URL)
+            needs_init = False
+            try:
+                cur = conn.cursor(cursor_factory=RealDictCursor)
+                cur.execute("SELECT 1 FROM information_schema.tables WHERE table_name = 'accounts'")
+                if not cur.fetchone():
+                    needs_init = True
+                cur.close()
+            finally:
+                conn.close()
+
+            if needs_init:
+                print("[PostgreSQL] Tables not found. Initializing PostgreSQL schema and data...")
+                try:
+                    from migrate_to_postgres import migrate
+                except ImportError:
+                    from backend.migrate_to_postgres import migrate
+                migrate(DATABASE_URL)
+        except Exception as e:
+            print(f"[PostgreSQL Init Notice] {e}")
         return
 
     global _DB_INITIALIZED
@@ -131,12 +177,20 @@ def ensure_database_initialized():
 @contextmanager
 def get_db():
     if DATABASE_URL:
-        import psycopg2
-        conn = psycopg2.connect(DATABASE_URL)
-        try:
-            yield PostgresConnWrapper(conn)
-        finally:
-            conn.close()
+        pool = get_pg_pool()
+        if pool:
+            conn = pool.getconn()
+            try:
+                yield PostgresConnWrapper(conn)
+            finally:
+                pool.putconn(conn)
+        else:
+            import psycopg2
+            conn = psycopg2.connect(DATABASE_URL)
+            try:
+                yield PostgresConnWrapper(conn)
+            finally:
+                conn.close()
     else:
         ensure_database_initialized()
         conn = sqlite3.connect(settings.DB_PATH, timeout=30.0, check_same_thread=False)
