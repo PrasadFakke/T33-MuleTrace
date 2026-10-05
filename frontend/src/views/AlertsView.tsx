@@ -13,6 +13,7 @@ export const AlertsView: React.FC<AlertsViewProps> = ({ onInvestigateAccount }) 
   const [page, setPage] = useState<number>(1);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Filters
   const [search, setSearch] = useState<string>('');
@@ -25,6 +26,7 @@ export const AlertsView: React.FC<AlertsViewProps> = ({ onInvestigateAccount }) 
   const loadAlerts = async () => {
     try {
       setLoading(true);
+      setError(null);
       const res = await fetchAlerts({
         page,
         page_size: 20,
@@ -38,8 +40,9 @@ export const AlertsView: React.FC<AlertsViewProps> = ({ onInvestigateAccount }) 
       setAlerts(res.items);
       setTotal(res.total);
       setTotalPages(res.total_pages);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setError(err.message || 'Failed to load alerts. Cloud backend may be waking up.');
     } finally {
       setLoading(false);
     }
@@ -172,6 +175,17 @@ export const AlertsView: React.FC<AlertsViewProps> = ({ onInvestigateAccount }) 
           <div className="flex items-center justify-center p-12 text-blue-600 space-x-2">
             <RefreshCw className="w-5 h-5 animate-spin" />
             <span className="text-xs font-mono font-medium">Fetching Alert Records...</span>
+          </div>
+        ) : error ? (
+          <div className="p-12 text-center text-slate-700 space-y-3">
+            <p className="font-semibold text-rose-600">Failed to load alert records</p>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">{error}</p>
+            <button
+              onClick={loadAlerts}
+              className="mt-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-xs transition"
+            >
+              Retry Loading Alerts
+            </button>
           </div>
         ) : alerts.length === 0 ? (
           <div className="p-12 text-center text-slate-500 text-xs">

@@ -8,14 +8,17 @@ import { TrendingUp, BarChart2, PieChart as PieIcon, Layers, RefreshCw } from 'l
 export const AnalyticsView: React.FC = () => {
   const [data, setData] = useState<any | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   const loadAnalytics = async () => {
     try {
       setLoading(true);
+      setError(null);
       const res = await fetchAnalytics();
       setData(res);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setError(err.message || 'Failed to load analytics.');
     } finally {
       setLoading(false);
     }
@@ -30,6 +33,21 @@ export const AnalyticsView: React.FC = () => {
       <div className="flex items-center justify-center h-96 space-x-3 text-blue-600">
         <RefreshCw className="w-6 h-6 animate-spin" />
         <span className="text-sm font-medium font-mono text-slate-600">Aggregating 5-Year Macro Telemetry...</span>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="p-8 text-center text-slate-700 bg-white border border-rose-200 rounded-xl shadow-sm space-y-3 max-w-lg mx-auto my-12">
+        <p className="font-semibold text-rose-600 text-sm">Failed to load analytics telemetry</p>
+        <p className="text-xs text-slate-500">{error || 'Unable to connect to backend service.'}</p>
+        <button
+          onClick={loadAnalytics}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg text-xs shadow-xs transition"
+        >
+          Retry Loading
+        </button>
       </div>
     );
   }

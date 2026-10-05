@@ -43,6 +43,7 @@ export const InvestigationView: React.FC<InvestigationViewProps> = ({ accountId,
   const [txnPage, setTxnPage] = useState<number>(1);
   const [txnTypeFilter, setTxnTypeFilter] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Status Action Modal
   const [analystNotes, setAnalystNotes] = useState<string>('');
@@ -52,6 +53,7 @@ export const InvestigationView: React.FC<InvestigationViewProps> = ({ accountId,
   const loadAccountData = async () => {
     try {
       setLoading(true);
+      setError(null);
       const [profData, netData, txnData] = await Promise.all([
         fetchAccountProfile(accountId),
         fetchAccountNetwork(accountId, 25),
@@ -64,8 +66,9 @@ export const InvestigationView: React.FC<InvestigationViewProps> = ({ accountId,
       if (profData.account.analyst_notes) {
         setAnalystNotes(profData.account.analyst_notes);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching investigation details:', err);
+      setError(err.message || 'Failed to fetch forensic account details.');
     } finally {
       setLoading(false);
     }
@@ -108,6 +111,31 @@ export const InvestigationView: React.FC<InvestigationViewProps> = ({ accountId,
       <div className="flex items-center justify-center h-96 space-x-3 text-blue-600">
         <RefreshCw className="w-6 h-6 animate-spin" />
         <span className="text-sm font-medium font-mono text-slate-600">Assembling Forensic Profile for {accountId}...</span>
+      </div>
+    );
+  }
+
+  if (error && !profile) {
+    return (
+      <div className="p-8 text-center text-slate-700 bg-white border border-rose-200 rounded-xl shadow-sm space-y-3 max-w-lg mx-auto my-12">
+        <p className="font-semibold text-rose-600 text-sm">Failed to connect to investigation service</p>
+        <p className="text-xs text-slate-500">{error}</p>
+        <div className="flex justify-center gap-2 pt-2">
+          <button
+            onClick={loadAccountData}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg text-xs shadow-xs transition"
+          >
+            Retry Loading
+          </button>
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-xs border border-slate-200 transition"
+            >
+              Go Back
+            </button>
+          )}
+        </div>
       </div>
     );
   }

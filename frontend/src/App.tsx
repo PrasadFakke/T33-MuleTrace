@@ -26,6 +26,7 @@ import { SettingsView } from './views/SettingsView';
 import { IngestionView } from './views/IngestionView';
 import { AIChatView } from './views/AIChatView';
 import { AccountHistoryView } from './views/AccountHistoryView';
+import { subscribeServerStatus, warmUpServer } from './api';
 
 type Tab = 'dashboard' | 'alerts' | 'investigation' | 'accounts' | 'network' | 'analytics' | 'chat' | 'settings' | 'ingestion' | 'history';
 
@@ -33,6 +34,16 @@ export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [investigatingAccountId, setInvestigatingAccountId] = useState<string>('ACCT_149010');
   const [globalSearch, setGlobalSearch] = useState<string>('');
+  const [isServerWaking, setIsServerWaking] = useState<boolean>(false);
+  const [wakeRetryCount, setWakeRetryCount] = useState<number>(0);
+
+  React.useEffect(() => {
+    warmUpServer();
+    return subscribeServerStatus((waking, count) => {
+      setIsServerWaking(waking);
+      setWakeRetryCount(count);
+    });
+  }, []);
 
   const navigateToInvestigation = (accountId: string) => {
     setInvestigatingAccountId(accountId);
@@ -242,6 +253,21 @@ export const App: React.FC = () => {
             </button>
           </div>
         </header>
+
+        {/* Cloud Cold-Start Notification Banner */}
+        {isServerWaking && (
+          <div className="bg-gradient-to-r from-amber-500 via-amber-600 to-orange-500 text-white text-xs px-6 py-2.5 flex items-center justify-between shadow-sm shrink-0 z-20">
+            <div className="flex items-center gap-2.5 font-medium">
+              <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+              <span>
+                Free cloud backend instance is waking up from standby (Render takes ~30–50s)... Re-connecting {wakeRetryCount > 0 ? `(Attempt ${wakeRetryCount}/4)` : ''}
+              </span>
+            </div>
+            <span className="text-[10px] bg-black/25 px-2 py-0.5 rounded font-mono uppercase tracking-wider font-semibold">
+              Auto-Retrying
+            </span>
+          </div>
+        )}
 
         {/* Scrollable View Area */}
         <main className="flex-1 overflow-y-auto p-6 lg:p-7 w-full max-w-none">

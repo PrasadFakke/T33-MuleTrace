@@ -17,6 +17,7 @@ export const NetworkView: React.FC<NetworkViewProps> = ({
   const [maxCps, setMaxCps] = useState<number>(25);
   const [network, setNetwork] = useState<NetworkResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Quick preset sample suspicious accounts
   const presets = ['ACCT_149010', 'ACCT_120083', 'ACCT_002704', 'ACCT_136280', 'ACCT_177174'];
@@ -24,11 +25,13 @@ export const NetworkView: React.FC<NetworkViewProps> = ({
   const loadNetwork = async (targetId: string) => {
     try {
       setLoading(true);
+      setError(null);
       const data = await fetchAccountNetwork(targetId, maxCps);
       setNetwork(data);
       setAccountId(targetId);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setError(err.message || 'Failed to load network graph.');
     } finally {
       setLoading(false);
     }
@@ -144,6 +147,17 @@ export const NetworkView: React.FC<NetworkViewProps> = ({
               }
             }}
           />
+        ) : error ? (
+          <div className="h-96 flex flex-col items-center justify-center text-center space-y-3">
+            <p className="font-semibold text-rose-600 text-xs">Failed to load network graph</p>
+            <p className="text-xs text-slate-500 max-w-sm">{error}</p>
+            <button
+              onClick={() => loadNetwork(accountId)}
+              className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-xs transition"
+            >
+              Retry
+            </button>
+          </div>
         ) : (
           <div className="h-96 flex items-center justify-center text-slate-400 text-xs">
             No transaction connections found for this account.

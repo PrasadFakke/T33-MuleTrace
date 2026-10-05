@@ -68,17 +68,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   if (error || !data) {
     return (
-      <div className="p-6 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 space-y-3 shadow-sm">
+      <div className="p-6 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 space-y-3 shadow-sm max-w-xl">
         <div className="flex items-center space-x-3">
           <ShieldAlert className="w-6 h-6 text-rose-600" />
           <h2 className="text-base font-bold">API Synchronization Failure</h2>
         </div>
         <p className="text-sm font-medium">{error || 'Unknown error occurred while querying dashboard telemetry.'}</p>
+        <p className="text-xs text-slate-600">
+          Tip: On the free cloud tier (Render), the backend spins down after 15 minutes of inactivity and takes ~30–50 seconds to wake up.
+        </p>
         <button
           onClick={loadData}
-          className="mt-2 px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-sm font-semibold transition"
+          className="mt-2 px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-sm font-semibold transition inline-flex items-center gap-2"
         >
-          Retry Connection
+          <RefreshCw className="w-4 h-4" />
+          <span>Retry Connection</span>
         </button>
       </div>
     );

@@ -577,23 +577,77 @@ def get_account_network_graph(account_id: str, max_cps=25):
             
         focal_info = dict(focal_acct)
 
-        # 1. Fetch dynamic transactions for this account from SQLite
+        # 1. Fetch pre-indexed counterparties from account_counterparties table
+        cp_aggs_dict = {}
+        try:
+            cursor.execute("""
+                SELECT counterparty_id, tx_count, total_amount, credit_count, debit_count, credit_amount, debit_amount
+                FROM account_counterparties
+                WHERE account_id = ?
+                ORDER BY total_amount DESC
+                LIMIT ?
+            """, (account_id, max_cps))
+            for r in cursor.fetchall():
+                cp_row = dict(r)
+                cp = cp_row["counterparty_id"]
+                cp_aggs_dict[cp] = {
+                    "tx_count": int(cp_row["tx_count"] or 0),
+                    "total_amount": float(cp_row["total_amount"] or 0.0),
+                    "credit_count": int(cp_row["credit_count"] or 0),
+                    "debit_count": int(cp_row["debit_count"] or 0),
+                    "credit_amount": float(cp_row["credit_amount"] or 0.0),
+                    "debit_amount": float(cp_row["debit_amount"] or 0.0),
+                }
+        except Exception:
+            pass
+
+        # 2. Fetch dynamic/newly ingested transactions from transactions table
         cursor.execute("""
             SELECT transaction_id, account_id, transaction_timestamp, mcc_code,
                    channel, amount, txn_type, counterparty_id
             FROM transactions
             WHERE account_id = ?
         """, (account_id,))
-        all_txns_list = [dict(r) for r in cursor.fetchall()]
+        for r in cursor.fetchall():
+            t = dict(r)
+            cp = t.get("counterparty_id")
+            if not cp: continue
+            if cp not in cp_aggs_dict:
+                cp_aggs_dict[cp] = {"tx_count": 0, "total_amount": 0.0, "credit_count": 0, "debit_count": 0, "credit_amount": 0.0, "debit_amount": 0.0}
+            amt = abs(t.get("amount") or 0.0)
+            is_cred = (t.get("txn_type") == "C")
+            cp_aggs_dict[cp]["tx_count"] += 1
+            cp_aggs_dict[cp]["total_amount"] += amt
+            if is_cred:
+                cp_aggs_dict[cp]["credit_count"] += 1
+                cp_aggs_dict[cp]["credit_amount"] += amt
+            else:
+                cp_aggs_dict[cp]["debit_count"] += 1
+                cp_aggs_dict[cp]["debit_amount"] += amt
 
-    # Use the generated cache when available, or scan source CSVs on deployments
-    # where generated cache files are not included.
-    baseline_scan = _scan_baseline_transactions()
-    if baseline_scan is not None:
-        baseline_txns = baseline_scan.filter(pl.col("account_id") == account_id).collect()
-        all_txns_list.extend(baseline_txns.to_dicts())
+    # Only fallback to baseline scan if no counterparties were found in database
+    baseline_scan = None
+    if not cp_aggs_dict:
+        baseline_scan = _scan_baseline_transactions()
+        if baseline_scan is not None:
+            baseline_txns = baseline_scan.filter(pl.col("account_id") == account_id).collect()
+            for t in baseline_txns.to_dicts():
+                cp = t.get("counterparty_id")
+                if not cp: continue
+                if cp not in cp_aggs_dict:
+                    cp_aggs_dict[cp] = {"tx_count": 0, "total_amount": 0.0, "credit_count": 0, "debit_count": 0, "credit_amount": 0.0, "debit_amount": 0.0}
+                amt = abs(t.get("amount") or 0.0)
+                is_cred = (t.get("txn_type") == "C")
+                cp_aggs_dict[cp]["tx_count"] += 1
+                cp_aggs_dict[cp]["total_amount"] += amt
+                if is_cred:
+                    cp_aggs_dict[cp]["credit_count"] += 1
+                    cp_aggs_dict[cp]["credit_amount"] += amt
+                else:
+                    cp_aggs_dict[cp]["debit_count"] += 1
+                    cp_aggs_dict[cp]["debit_amount"] += amt
 
-    if len(all_txns_list) == 0:
+    if not cp_aggs_dict:
         return {
             "nodes": [{
                 "id": account_id,
@@ -605,26 +659,6 @@ def get_account_network_graph(account_id: str, max_cps=25):
             }],
             "edges": []
         }
-        
-
-    # Aggregate flows by counterparty using Python dict
-    cp_aggs_dict = {}
-    for t in all_txns_list:
-        cp = t.get("counterparty_id")
-        if not cp: continue
-        if cp not in cp_aggs_dict:
-            cp_aggs_dict[cp] = {"tx_count": 0, "total_amount": 0.0, "credit_count": 0, "debit_count": 0, "credit_amount": 0.0, "debit_amount": 0.0}
-        
-        amt = abs(t.get("amount") or 0.0)
-        is_cred = (t.get("txn_type") == "C")
-        cp_aggs_dict[cp]["tx_count"] += 1
-        cp_aggs_dict[cp]["total_amount"] += amt
-        if is_cred:
-            cp_aggs_dict[cp]["credit_count"] += 1
-            cp_aggs_dict[cp]["credit_amount"] += amt
-        else:
-            cp_aggs_dict[cp]["debit_count"] += 1
-            cp_aggs_dict[cp]["debit_amount"] += amt
 
     # Sort counterparties by volume and limit to max_cps
     sorted_cps = sorted(cp_aggs_dict.items(), key=lambda x: x[1]["total_amount"], reverse=True)[:max_cps]
@@ -693,26 +727,46 @@ def get_account_network_graph(account_id: str, max_cps=25):
     # 3. 2-Hop Bridging: Discover other accounts connected through these counterparties (limit to 6 secondary accounts)
     if top_cps:
         cp_list = list(top_cps)[:6]
-        # Query secondary accounts from SQLite
+        sec_rows = []
         with get_db() as conn:
             c = conn.cursor()
-            q = f"SELECT account_id, counterparty_id, amount, txn_type FROM transactions WHERE counterparty_id IN ({','.join(['?']*len(cp_list))}) AND account_id != ? LIMIT 10"
-            c.execute(q, cp_list + [account_id])
-            sec_rows = [dict(r) for r in c.fetchall()]
+            # Fast index query on account_counterparties table
+            try:
+                placeholders = ','.join(['?'] * len(cp_list))
+                q = f"""
+                    SELECT account_id, counterparty_id, total_amount as amount, 
+                           CASE WHEN credit_count > 0 THEN 'C' ELSE 'D' END as txn_type
+                    FROM account_counterparties
+                    WHERE counterparty_id IN ({placeholders}) AND account_id != ?
+                    ORDER BY total_amount DESC LIMIT 6
+                """
+                c.execute(q, cp_list + [account_id])
+                sec_rows = [dict(r) for r in c.fetchall()]
+            except Exception:
+                pass
 
-        # Complement with baseline transactions when available.
+            # Fall back to dynamic transactions table if needed
+            if not sec_rows:
+                q = f"SELECT account_id, counterparty_id, amount, txn_type FROM transactions WHERE counterparty_id IN ({','.join(['?']*len(cp_list))}) AND account_id != ? LIMIT 10"
+                c.execute(q, cp_list + [account_id])
+                sec_rows = [dict(r) for r in c.fetchall()]
+
+        # Only complement with baseline transactions if still empty and scan is available
         if len(sec_rows) < 6 and baseline_scan is not None:
-            baseline_sec = baseline_scan.filter(
-                pl.col("counterparty_id").is_in(cp_list)
-                & (pl.col("account_id") != account_id)
-            ).group_by(["account_id", "counterparty_id"]).agg([
-                pl.len().alias("count"),
-                pl.col("amount").sum().alias("amount"),
-                pl.col("txn_type").first().alias("txn_type")
-            ]).sort("amount", descending=True).head(6).collect()
-            for pr in baseline_sec.iter_rows(named=True):
-                if not any(sr.get("account_id") == pr["account_id"] and sr.get("counterparty_id") == pr["counterparty_id"] for sr in sec_rows):
-                    sec_rows.append(pr)
+            try:
+                baseline_sec = baseline_scan.filter(
+                    pl.col("counterparty_id").is_in(cp_list)
+                    & (pl.col("account_id") != account_id)
+                ).group_by(["account_id", "counterparty_id"]).agg([
+                    pl.len().alias("count"),
+                    pl.col("amount").sum().alias("amount"),
+                    pl.col("txn_type").first().alias("txn_type")
+                ]).sort("amount", descending=True).head(6).collect()
+                for pr in baseline_sec.iter_rows(named=True):
+                    if not any(sr.get("account_id") == pr["account_id"] and sr.get("counterparty_id") == pr["counterparty_id"] for sr in sec_rows):
+                        sec_rows.append(pr)
+            except Exception:
+                pass
 
         sec_acct_ids = list(set(r["account_id"] for r in sec_rows if r.get("account_id")))
 

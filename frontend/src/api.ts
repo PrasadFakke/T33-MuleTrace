@@ -217,10 +217,59 @@ export interface AccountHistoryResponse {
   total_pages: number;
 }
 
-const API_BASE = '/api';
+export const API_BASE = (import.meta.env.VITE_API_BASE as string) || 
+  (import.meta.env.DEV ? '/api' : 'https://muletrace-backend.onrender.com/api');
+
+export type ServerStatusListener = (isWaking: boolean, retryCount: number, errorMsg?: string) => void;
+const serverStatusListeners = new Set<ServerStatusListener>();
+
+export function subscribeServerStatus(listener: ServerStatusListener): () => void {
+  serverStatusListeners.add(listener);
+  return () => serverStatusListeners.delete(listener);
+}
+
+function notifyServerStatus(isWaking: boolean, retryCount: number = 0, errorMsg?: string): void {
+  serverStatusListeners.forEach(listener => listener(isWaking, retryCount, errorMsg));
+}
+
+export async function apiFetch(endpoint: string, options: RequestInit = {}, retries = 4, delayMs = 3500): Promise<Response> {
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${cleanEndpoint}`;
+  
+  let attempt = 0;
+  while (attempt <= retries) {
+    try {
+      const res = await fetch(url, options);
+      // Statuses 502, 503, 504 are typical Render free cold boot / gateway responses
+      if (!res.ok && [502, 503, 504].includes(res.status) && attempt < retries) {
+        attempt++;
+        notifyServerStatus(true, attempt, `Free cloud server is waking up (status ${res.status}). Retrying...`);
+        await new Promise(r => setTimeout(r, delayMs));
+        continue;
+      }
+      notifyServerStatus(false, 0);
+      return res;
+    } catch (err: any) {
+      if (attempt < retries) {
+        attempt++;
+        notifyServerStatus(true, attempt, 'Connecting to server. Standby while cloud instance spins up...');
+        await new Promise(r => setTimeout(r, delayMs));
+        continue;
+      }
+      notifyServerStatus(false, 0);
+      throw err;
+    }
+  }
+  return fetch(url, options);
+}
+
+export function warmUpServer(): void {
+  const healthUrl = API_BASE.replace(/\/api$/, '') + '/health';
+  fetch(healthUrl).catch(() => {});
+}
 
 export async function fetchDashboardSummary(): Promise<DashboardSummary> {
-  const res = await fetch(`${API_BASE}/dashboard/summary`);
+  const res = await apiFetch('/dashboard/summary');
   if (!res.ok) throw new Error('Failed to fetch dashboard summary');
   return res.json();
 }
@@ -245,7 +294,7 @@ export async function fetchAlerts(params: {
   if (params.sort_by) query.set('sort_by', params.sort_by);
   if (params.sort_order) query.set('sort_order', params.sort_order);
 
-  const res = await fetch(`${API_BASE}/alerts?${query.toString()}`);
+  const res = await apiFetch(`/alerts?${query.toString()}`);
   if (!res.ok) throw new Error('Failed to fetch alerts');
   return res.json();
 }
@@ -270,14 +319,17 @@ export async function fetchAccounts(params: {
   if (params.sort_by) query.set('sort_by', params.sort_by);
   if (params.sort_order) query.set('sort_order', params.sort_order);
 
-  const res = await fetch(`${API_BASE}/accounts?${query.toString()}`);
+  const res = await apiFetch(`/accounts?${query.toString()}`);
   if (!res.ok) throw new Error('Failed to fetch accounts');
   return res.json();
 }
 
 export async function fetchAccountProfile(accountId: string): Promise<AccountProfileResponse> {
-  const res = await fetch(`${API_BASE}/accounts/${accountId}`);
-  if (!res.ok) throw new Error('Failed to fetch account profile');
+  const res = await apiFetch(`/accounts/${accountId}`);
+  if (!res.ok) {
+    if (res.status === 404) throw new Error(`Account ${accountId} not found`);
+    throw new Error('Failed to fetch account profile');
+  }
   return res.json();
 }
 
@@ -291,7 +343,7 @@ export async function fetchAccountTransactions(accountId: string, params?: {
   if (params?.page_size) query.set('page_size', params.page_size.toString());
   if (params?.txn_type) query.set('txn_type', params.txn_type);
 
-  const res = await fetch(`${API_BASE}/accounts/${accountId}/transactions?${query.toString()}`);
+  const res = await apiFetch(`/accounts/${accountId}/transactions?${query.toString()}`);
   if (!res.ok) throw new Error('Failed to fetch account transactions');
   return res.json();
 }
@@ -325,7 +377,7 @@ export async function fetchAccountHistory(
   if (params?.sort_order) query.set('sort_order', params.sort_order);
   if (params?.all_records) query.set('all_records', 'true');
 
-  const res = await fetch(`${API_BASE}/accounts/${accountId}/history?${query.toString()}`);
+  const res = await apiFetch(`/accounts/${accountId}/history?${query.toString()}`);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Failed to fetch account history' }));
     throw new Error(err.detail || 'Failed to fetch account history');
@@ -334,13 +386,13 @@ export async function fetchAccountHistory(
 }
 
 export async function fetchAccountNetwork(accountId: string, maxCps: number = 25): Promise<NetworkResponse> {
-  const res = await fetch(`${API_BASE}/accounts/${accountId}/network?max_cps=${maxCps}`);
+  const res = await apiFetch(`/accounts/${accountId}/network?max_cps=${maxCps}`);
   if (!res.ok) throw new Error('Failed to fetch account network');
   return res.json();
 }
 
 export async function updateInvestigationStatus(accountId: string, status: string, notes: string = '') {
-  const res = await fetch(`${API_BASE}/investigations/${accountId}/status`, {
+  const res = await apiFetch(`/investigations/${accountId}/status`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status, analyst_notes: notes }),
@@ -350,19 +402,19 @@ export async function updateInvestigationStatus(accountId: string, status: strin
 }
 
 export async function fetchAnalytics() {
-  const res = await fetch(`${API_BASE}/analytics`);
+  const res = await apiFetch('/analytics');
   if (!res.ok) throw new Error('Failed to fetch analytics');
   return res.json();
 }
 
 export async function fetchSettings() {
-  const res = await fetch(`${API_BASE}/settings`);
+  const res = await apiFetch('/settings');
   if (!res.ok) throw new Error('Failed to fetch settings');
   return res.json();
 }
 
 export async function updateSettings(settings: Record<string, any>) {
-  const res = await fetch(`${API_BASE}/settings`, {
+  const res = await apiFetch('/settings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(settings),
@@ -372,7 +424,7 @@ export async function updateSettings(settings: Record<string, any>) {
 }
 
 export async function resetSettings() {
-  const res = await fetch(`${API_BASE}/settings/reset`, {
+  const res = await apiFetch('/settings/reset', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
   });
@@ -460,7 +512,7 @@ export interface IngestionBatchHistoryItem {
 export async function uploadAndPreviewFile(file: File): Promise<IngestionBatchPreview> {
   const formData = new FormData();
   formData.append('file', file);
-  const res = await fetch(`${API_BASE}/ingestion/upload`, {
+  const res = await apiFetch('/ingestion/upload', {
     method: 'POST',
     body: formData,
   });
@@ -472,7 +524,7 @@ export async function uploadAndPreviewFile(file: File): Promise<IngestionBatchPr
 }
 
 export async function commitIngestionBatch(batchId: string): Promise<IngestionCommitResponse> {
-  const res = await fetch(`${API_BASE}/ingestion/commit`, {
+  const res = await apiFetch('/ingestion/commit', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ batch_id: batchId }),
@@ -485,7 +537,7 @@ export async function commitIngestionBatch(batchId: string): Promise<IngestionCo
 }
 
 export async function rollbackIngestionBatch(batchId: string): Promise<{ success: boolean; message: string }> {
-  const res = await fetch(`${API_BASE}/ingestion/${batchId}/rollback`, {
+  const res = await apiFetch(`/ingestion/${batchId}/rollback`, {
     method: 'POST',
   });
   if (!res.ok) {
@@ -496,7 +548,7 @@ export async function rollbackIngestionBatch(batchId: string): Promise<{ success
 }
 
 export async function fetchIngestionHistory(): Promise<{ batches: IngestionBatchHistoryItem[] }> {
-  const res = await fetch(`${API_BASE}/ingestion/history`);
+  const res = await apiFetch('/ingestion/history');
   if (!res.ok) throw new Error('Failed to fetch ingestion history');
   const data = await res.json();
   return { batches: Array.isArray(data) ? data : (data.batches || []) };
@@ -510,7 +562,7 @@ export interface ChatResponse {
 }
 
 export async function sendChatMessage(message: string, history?: { role: string; content: string }[]): Promise<ChatResponse> {
-  const res = await fetch(`${API_BASE}/chat`, {
+  const res = await apiFetch('/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, history }),
