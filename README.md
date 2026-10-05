@@ -124,7 +124,7 @@ $$\text{Risk Score} = \min\left(100, \; S_{\text{Fan-In/Out}} + S_{\text{Pass-Th
 - **0–29 (`LOW`):** Standard everyday consumer retail activity.
 - **30–59 (`MEDIUM`):** Elevated volume; standard monitoring.
 - **60–79 (`HIGH`):** Generates automated alert; triage required.
-- **80–100 (`CRITICAL`):** Severe multi-engine violation; immediate freeze recommendation.
+- **80–100 (`CRITICAL`):** Severe multi-engine violation; immediate freeze recommendations.
 
 ### Zero Post-Detection Leakage Guarantee
 To maintain strict analytical validity, post-investigation outcome columns (`freeze_date`, `unfreeze_date`, and historical audit tags) are **strictly excluded** from all heuristic scoring equations.
